@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/pkg/chrootarchive"
 	"github.com/docker/docker/pkg/symlink"
 	"github.com/docker/docker/pkg/system"
+	"github.com/docker/docker/runconfig"
 	"github.com/docker/docker/volumes"
 )
 
@@ -179,6 +180,7 @@ func (container *Container) parseVolumeMountConfig() (map[string]*Mount, error) 
 
 	// Get the rest of the volumes
 	for path := range container.Config.Volumes {
+
 		// Check if this is already added as a bind-mount
 		path = filepath.Clean(path)
 		if _, exists := mounts[path]; exists {
@@ -230,13 +232,19 @@ func parseBindMountSpec(spec string) (string, string, bool, error) {
 	case 3:
 		path = arr[0]
 		mountToPath = arr[1]
-		writable = validMountMode(arr[2]) && arr[2] == "rw"
+		if !validMountMode(arr[2]) {
+			return "", "", false, fmt.Errorf("invalid mode for volumes: %s", arr[2])
+		}
+		writable = arr[2] == "rw"
 	default:
 		return "", "", false, fmt.Errorf("Invalid volume specification: %s", spec)
 	}
 
 	if !filepath.IsAbs(path) {
 		return "", "", false, fmt.Errorf("cannot bind mount volume: %s volume paths must be absolute.", path)
+	}
+	if !filepath.IsAbs(mountToPath) {
+		return "", "", false, fmt.Errorf("Invalid volume path: %s mount paths must be absolute.", mountToPath)
 	}
 
 	path = filepath.Clean(path)
@@ -246,14 +254,15 @@ func parseBindMountSpec(spec string) (string, string, bool, error) {
 
 func parseVolumesFromSpec(spec string) (string, string, error) {
 	specParts := strings.SplitN(spec, ":", 2)
-	if len(specParts) == 0 {
-		return "", "", fmt.Errorf("malformed volumes-from specification: %s", spec)
-	}
 
 	var (
 		id   = specParts[0]
 		mode = "rw"
 	)
+
+	if len(id) == 0 {
+		return "", "", fmt.Errorf("container of volume-from can't be empty: %s", spec)
+	}
 	if len(specParts) == 2 {
 		mode = specParts[1]
 		if !validMountMode(mode) {
@@ -400,4 +409,36 @@ func copyOwnership(source, destination string) error {
 	}
 
 	return os.Chmod(destination, os.FileMode(stat.Mode()))
+}
+
+//validate the volumes path in config
+func validateVolumePath(config *runconfig.Config, hostConfig *runconfig.HostConfig) error {
+	//validate bind volumes
+	if hostConfig != nil {
+		for _, spec := range hostConfig.Binds {
+			if _, _, _, err := parseBindMountSpec(spec); err != nil {
+				return err
+			}
+		}
+	}
+
+	//validate other volumes
+	if config != nil {
+		for path := range config.Volumes {
+			if !filepath.IsAbs(path) {
+				return fmt.Errorf("Invalid volume path: %s mount paths must be absolute.", path)
+			}
+		}
+	}
+
+	//validate volumes-from
+	if hostConfig != nil {
+		for _, spec := range hostConfig.VolumesFrom {
+			if _, _, err := parseVolumesFromSpec(spec); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

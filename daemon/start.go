@@ -7,6 +7,7 @@ import (
 )
 
 func (daemon *Daemon) ContainerStart(name string, hostConfig *runconfig.HostConfig) error {
+
 	container, err := daemon.Get(name)
 	if err != nil {
 		return err
@@ -22,7 +23,12 @@ func (daemon *Daemon) ContainerStart(name string, hostConfig *runconfig.HostConf
 
 	// This is kept for backward compatibility - hostconfig should be passed when
 	// creating a container, not during start.
+
 	if hostConfig != nil {
+		//validate volume path before starting container
+		if err := validateVolumePath(nil, hostConfig); err != nil {
+			return err
+		}
 		if err := daemon.setHostConfig(container, hostConfig); err != nil {
 			return err
 		}

@@ -14,6 +14,11 @@ import (
 func (daemon *Daemon) ContainerCreate(name string, config *runconfig.Config, hostConfig *runconfig.HostConfig) (string, []string, error) {
 	var warnings []string
 
+	//validate volume path before creating container
+	if err := validateVolumePath(config, hostConfig); err != nil {
+		return err
+	}
+
 	if hostConfig.LxcConf.Len() > 0 && !strings.Contains(daemon.ExecutionDriver().Name(), "lxc") {
 		return "", warnings, fmt.Errorf("Cannot use --lxc-conf with execdriver: %s", daemon.ExecutionDriver().Name())
 	}
