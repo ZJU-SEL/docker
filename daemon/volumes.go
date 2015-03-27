@@ -179,6 +179,10 @@ func (container *Container) parseVolumeMountConfig() (map[string]*Mount, error) 
 
 	// Get the rest of the volumes
 	for path := range container.Config.Volumes {
+		if !filepath.IsAbs(path) {
+			return nil, fmt.Errorf("cannot bind mount volume: %s mount paths must be absolute.", path)
+		}
+
 		// Check if this is already added as a bind-mount
 		path = filepath.Clean(path)
 		if _, exists := mounts[path]; exists {
@@ -234,6 +238,10 @@ func parseBindMountSpec(spec string) (string, string, bool, error) {
 
 	if !filepath.IsAbs(path) {
 		return "", "", false, fmt.Errorf("cannot bind mount volume: %s volume paths must be absolute.", path)
+	}
+
+	if !filepath.IsAbs(mountToPath) {
+		return "", "", false, fmt.Errorf("cannot bind mount volume: %s mount paths must be absolute.", mountToPath)
 	}
 
 	path = filepath.Clean(path)
