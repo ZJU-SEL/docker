@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
@@ -45,6 +46,11 @@ func (daemon *Daemon) ContainerCreate(job *engine.Job) error {
 		return fmt.Errorf("You should always set the Memory limit when using Memoryswap limit, see usage.\n")
 	}
 
+	//validate volume path before creating container
+	if err := validateVolumePath(config, hostConfig); err != nil {
+		return err
+	}
+
 	container, buildWarnings, err := daemon.Create(config, hostConfig, name)
 	if err != nil {
 		if daemon.Graph().IsNotExist(err) {
@@ -65,6 +71,67 @@ func (daemon *Daemon) ContainerCreate(job *engine.Job) error {
 
 	for _, warning := range buildWarnings {
 		log.Printf("%s\n", warning)
+	}
+
+	return nil
+}
+
+func validateVolumePath(config *runconfig.Config, hostConfig *runconfig.HostConfig) error {
+	validModes := map[string]bool{
+		"rw": true,
+		"ro": true,
+	}
+
+	//validate bind volums
+	for _, spec := range hostConfig.Binds {
+		var (
+			path, mountToPath, mode string
+			arr                     = strings.Split(spec, ":")
+		)
+		switch len(arr) {
+		case 2:
+			path = arr[0]
+			mountToPath = arr[1]
+		case 3:
+			path = arr[0]
+			mountToPath = arr[1]
+			mode = arr[2]
+			if !validModes[mode] {
+				return fmt.Errorf("invalid mode for volumes: %s", mode)
+			}
+
+		default:
+			return fmt.Errorf("Invalid volume specification: %s", spec)
+		}
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("Invalid volume path: %s volume paths must be absolute.", path)
+		}
+		if !filepath.IsAbs(mountToPath) {
+			return fmt.Errorf("Invalid volume path: %s mount paths must be absolute.", mountToPath)
+		}
+	}
+
+	//validate other volums
+	for path := range config.Volumes {
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("Invalid volume path: %s mount paths must be absolute.", path)
+		}
+	}
+
+	//validate volums-from
+	for _, spec := range hostConfig.VolumesFrom {
+		specParts := strings.SplitN(spec, ":", 2)
+
+		if len(specParts[0]) == 0 {
+			return fmt.Errorf("container of volume-from can't be empty: %s", spec)
+		}
+
+		if len(specParts) == 2 {
+			mode := specParts[1]
+			if !validModes[mode] {
+				return fmt.Errorf("invalid mode for volumes-from: %s", mode)
+			}
+		}
 	}
 
 	return nil

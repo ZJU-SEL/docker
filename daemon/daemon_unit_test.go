@@ -37,26 +37,3 @@ func TestParseSecurityOpt(t *testing.T) {
 		t.Fatal("Expected parseSecurityOpt error, got nil")
 	}
 }
-
-//only test whether path is absolute
-func TestParseVolumeMountConfig(t *testing.T) {
-	container := &Container{}
-	container.hostConfig = &runconfig.HostConfig{}
-	container.Config = &runconfig.Config{Volumes: make(map[string]struct{})}
-
-	container.hostConfig.Binds = []string{"data:/data"}
-	if _, err := container.parseVolumeMountConfig(); err == nil {
-		t.Fatal("Expected parseVolumeMountConfig error, got nil")
-	}
-
-	container.hostConfig.Binds = []string{"/data:data"}
-	if _, err := container.parseVolumeMountConfig(); err == nil {
-		t.Fatal("Expected parseVolumeMountConfig error, got nil")
-	}
-
-	container.Config.Volumes["data"] = struct{}{}
-	if _, err := container.parseVolumeMountConfig(); err == nil {
-		t.Fatal("Expected parseVolumeMountConfig error, got nil")
-	}
-	t.Log("parseVolumeMountConfig test passed")
-}
