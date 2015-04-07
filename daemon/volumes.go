@@ -155,7 +155,10 @@ func (container *Container) parseVolumeMountConfig() (map[string]*Mount, error) 
 	var mounts = make(map[string]*Mount)
 	// Get all the bind mounts
 	for _, spec := range container.hostConfig.Binds {
-		path, mountToPath, writable := parseBindMountSpec(spec)
+		path, mountToPath, writable, err := parseBindMountSpec(spec)
+		if err != nil {
+			return nil, err
+		}
 		// Check if a bind mount has already been specified for the same container path
 		if m, exists := mounts[mountToPath]; exists {
 			return nil, fmt.Errorf("Duplicate volume %q: %q already in use, mounted from %q", path, mountToPath, m.volume.Path)
@@ -210,7 +213,7 @@ func (container *Container) parseVolumeMountConfig() (map[string]*Mount, error) 
 	return mounts, nil
 }
 
-func parseBindMountSpec(spec string) (string, string, bool) {
+func parseBindMountSpec(spec string) (string, string, bool, error) {
 	var (
 		path, mountToPath string
 		writable          bool
@@ -225,25 +228,44 @@ func parseBindMountSpec(spec string) (string, string, bool) {
 	case 3:
 		path = arr[0]
 		mountToPath = arr[1]
-		writable = validMountMode(arr[2]) && arr[2] == "rw"
+		if !validMountMode(arr[2]) {
+			return "", "", false, fmt.Errorf("invalid mode for volumes: %s", arr[2])
+		}
+		writable = arr[2] == "rw"
+	default:
+		return "", "", false, fmt.Errorf("Invalid volume specification: %s", spec)
+	}
+
+	if !filepath.IsAbs(path) {
+		return "", "", false, fmt.Errorf("cannot bind mount volume: %s volume paths must be absolute.", path)
+	}
+	if !filepath.IsAbs(mountToPath) {
+		return "", "", false, fmt.Errorf("Invalid volume path: %s mount paths must be absolute.", mountToPath)
 	}
 
 	path = filepath.Clean(path)
 	mountToPath = filepath.Clean(mountToPath)
-	return path, mountToPath, writable
+	return path, mountToPath, writable, nil
 }
 
-func parseVolumesFromSpec(spec string) (string, string) {
+func parseVolumesFromSpec(spec string) (string, string, error) {
 	specParts := strings.SplitN(spec, ":", 2)
 
 	var (
 		id   = specParts[0]
 		mode = "rw"
 	)
+
+	if len(id) == 0 {
+		return "", "", fmt.Errorf("container of volume-from can't be empty: %s", spec)
+	}
 	if len(specParts) == 2 {
 		mode = specParts[1]
+		if !validMountMode(mode) {
+			return "", "", fmt.Errorf("invalid mode for volumes-from: %s", mode)
+		}
 	}
-	return id, mode
+	return id, mode, nil
 }
 
 func (container *Container) applyVolumesFrom() error {
@@ -255,7 +277,10 @@ func (container *Container) applyVolumesFrom() error {
 	mountGroups := make(map[string][]*Mount)
 
 	for _, spec := range volumesFrom {
-		id, mode := parseVolumesFromSpec(spec)
+		id, mode, err := parseVolumesFromSpec(spec)
+		if err != nil {
+			return err
+		}
 		if _, exists := container.AppliedVolumesFrom[id]; exists {
 			// Don't try to apply these since they've already been applied
 			continue

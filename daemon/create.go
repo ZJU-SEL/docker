@@ -77,60 +77,24 @@ func (daemon *Daemon) ContainerCreate(job *engine.Job) error {
 }
 
 func validateVolumePath(config *runconfig.Config, hostConfig *runconfig.HostConfig) error {
-	validModes := map[string]bool{
-		"rw": true,
-		"ro": true,
-	}
-
-	//validate bind volums
+	//validate bind volumes
 	for _, spec := range hostConfig.Binds {
-		var (
-			path, mountToPath, mode string
-			arr                     = strings.Split(spec, ":")
-		)
-		switch len(arr) {
-		case 2:
-			path = arr[0]
-			mountToPath = arr[1]
-		case 3:
-			path = arr[0]
-			mountToPath = arr[1]
-			mode = arr[2]
-			if !validModes[mode] {
-				return fmt.Errorf("invalid mode for volumes: %s", mode)
-			}
-
-		default:
-			return fmt.Errorf("Invalid volume specification: %s", spec)
-		}
-		if !filepath.IsAbs(path) {
-			return fmt.Errorf("Invalid volume path: %s volume paths must be absolute.", path)
-		}
-		if !filepath.IsAbs(mountToPath) {
-			return fmt.Errorf("Invalid volume path: %s mount paths must be absolute.", mountToPath)
+		if _, _, _, err := parseBindMountSpec(spec); err != nil {
+			return err
 		}
 	}
 
-	//validate other volums
+	//validate other volumes
 	for path := range config.Volumes {
 		if !filepath.IsAbs(path) {
 			return fmt.Errorf("Invalid volume path: %s mount paths must be absolute.", path)
 		}
 	}
 
-	//validate volums-from
+	//validate volumes-from
 	for _, spec := range hostConfig.VolumesFrom {
-		specParts := strings.SplitN(spec, ":", 2)
-
-		if len(specParts[0]) == 0 {
-			return fmt.Errorf("container of volume-from can't be empty: %s", spec)
-		}
-
-		if len(specParts) == 2 {
-			mode := specParts[1]
-			if !validModes[mode] {
-				return fmt.Errorf("invalid mode for volumes-from: %s", mode)
-			}
+		if _, _, err := parseVolumesFromSpec(spec); err != nil {
+			return err
 		}
 	}
 
