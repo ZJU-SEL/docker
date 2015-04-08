@@ -64,7 +64,7 @@ func TestValidateVolumePath(t *testing.T) {
 	}
 
 	// given success path
-	hostConfig.Binds = []string{"/data1:/data2", "/data3:/data4:rw", "/data5:/data6:ro}
+	hostConfig.Binds = []string{"/data1:/data2", "/data3:/data4:rw", "/data5:/data6:ro"}
 	config.Volumes = make(map[string]struct{})
 	config.Volumes["/data7"] = struct{}{}
 	hostConfig.VolumesFrom = []string{"con1", "con2:rw", "con3:ro"}
