@@ -25,6 +25,11 @@ func (daemon *Daemon) ContainerCreate(job *engine.Job) error {
 	config := runconfig.ContainerConfigFromJob(job)
 	hostConfig := runconfig.ContainerHostConfigFromJob(job)
 
+	//validate volume path before creating container
+	if err := validateVolumePath(config, hostConfig); err != nil {
+		return err
+	}
+
 	if len(hostConfig.LxcConf) > 0 && !strings.Contains(daemon.ExecutionDriver().Name(), "lxc") {
 		return fmt.Errorf("Cannot use --lxc-conf with execdriver: %s", daemon.ExecutionDriver().Name())
 	}
@@ -44,11 +49,6 @@ func (daemon *Daemon) ContainerCreate(job *engine.Job) error {
 	}
 	if hostConfig.Memory == 0 && hostConfig.MemorySwap > 0 {
 		return fmt.Errorf("You should always set the Memory limit when using Memoryswap limit, see usage.\n")
-	}
-
-	//validate volume path before creating container
-	if err := validateVolumePath(config, hostConfig); err != nil {
-		return err
 	}
 
 	container, buildWarnings, err := daemon.Create(config, hostConfig, name)

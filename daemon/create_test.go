@@ -12,7 +12,7 @@ func TestValidateVolumePath(t *testing.T) {
 	hostConfig := &runconfig.HostConfig{}
 
 	// given invalid src
-	hostConfig.Binds = []string{"data:/data"}
+	hostConfig.Binds = []string{"/data:data"}
 	if err := validateVolumePath(config, hostConfig); err == nil {
 		t.Fatal("Expected validateVolumePath error, got nil")
 	}
@@ -23,11 +23,18 @@ func TestValidateVolumePath(t *testing.T) {
 		t.Fatal("Expected validateVolumePath error, got nil")
 	}
 
+	// given invalid mode
+	hostConfig.Binds = []string{"/data:/data:rr"}
+	if err := validateVolumePath(config, hostConfig); err == nil {
+		t.Fatal("Expected validateVolumePath error, got nil")
+	}
+
 	// given invalid format
 	hostConfig.Binds = []string{"/data:/data:/data:ro"}
 	if err := validateVolumePath(config, hostConfig); err == nil {
 		t.Fatal("Expected validateVolumePath error, got nil")
 	}
+
 	hostConfig.Binds = []string{"/data"}
 	if err := validateVolumePath(config, hostConfig); err == nil {
 		t.Fatal("Expected validateVolumePath error, got nil")
@@ -40,7 +47,7 @@ func TestValidateVolumePath(t *testing.T) {
 		t.Fatal("Expected validateVolumePath error, got nil")
 	}
 
-	// given invalid volume-from
+	// given invalid volume-from id
 	hostConfig.Binds = []string{}
 	config.Volumes = make(map[string]struct{})
 	hostConfig.VolumesFrom = []string{""}
@@ -48,7 +55,7 @@ func TestValidateVolumePath(t *testing.T) {
 		t.Fatal("Expected validateVolumePath error, got nil")
 	}
 
-	// given invalid volume-from
+	// given invalid volume-from mode
 	hostConfig.Binds = []string{}
 	config.Volumes = make(map[string]struct{})
 	hostConfig.VolumesFrom = []string{"con:rr"}
@@ -57,10 +64,10 @@ func TestValidateVolumePath(t *testing.T) {
 	}
 
 	// given success path
-	hostConfig.Binds = []string{"/data1:/data2"}
+	hostConfig.Binds = []string{"/data1:/data2", "/data3:/data4:rw", "/data5:/data6:ro}
 	config.Volumes = make(map[string]struct{})
-	config.Volumes["/data3"] = struct{}{}
-	hostConfig.VolumesFrom = []string{"con1", "con2:ro"}
+	config.Volumes["/data7"] = struct{}{}
+	hostConfig.VolumesFrom = []string{"con1", "con2:rw", "con3:ro"}
 	if err := validateVolumePath(config, hostConfig); err != nil {
 		t.Fatal("Expected no validateVolumePath error, got one: ", err)
 	}
