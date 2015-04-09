@@ -406,3 +406,29 @@ func copyOwnership(source, destination string) error {
 
 	return os.Chmod(destination, os.FileMode(stat.Mode()))
 }
+
+//validate the volumes path in config
+func validateVolumePath(config *runconfig.Config, hostConfig *runconfig.HostConfig) error {
+	//validate bind volumes
+	for _, spec := range hostConfig.Binds {
+		if _, _, _, err := parseBindMountSpec(spec); err != nil {
+			return err
+		}
+	}
+
+	//validate other volumes
+	for path := range config.Volumes {
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("Invalid volume path: %s mount paths must be absolute.", path)
+		}
+	}
+
+	//validate volumes-from
+	for _, spec := range hostConfig.VolumesFrom {
+		if _, _, err := parseVolumesFromSpec(spec); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

@@ -11,6 +11,15 @@ func (daemon *Daemon) ContainerStart(job *engine.Job) error {
 	if len(job.Args) < 1 {
 		return fmt.Errorf("Usage: %s container_id", job.Name)
 	}
+
+	config := runconfig.ContainerConfigFromJob(job)
+	hostConfig := runconfig.ContainerHostConfigFromJob(job)
+
+	//validate volume path before starting container
+	if err := validateVolumePath(config, hostConfig); err != nil {
+		return err
+	}
+
 	var (
 		name = job.Args[0]
 	)
@@ -32,7 +41,6 @@ func (daemon *Daemon) ContainerStart(job *engine.Job) error {
 	// This is kept for backward compatibility - hostconfig should be passed when
 	// creating a container, not during start.
 	if len(job.Environ()) > 0 {
-		hostConfig := runconfig.ContainerHostConfigFromJob(job)
 		if err := daemon.setHostConfig(container, hostConfig); err != nil {
 			return err
 		}

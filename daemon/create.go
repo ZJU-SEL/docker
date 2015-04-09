@@ -76,31 +76,6 @@ func (daemon *Daemon) ContainerCreate(job *engine.Job) error {
 	return nil
 }
 
-func validateVolumePath(config *runconfig.Config, hostConfig *runconfig.HostConfig) error {
-	//validate bind volumes
-	for _, spec := range hostConfig.Binds {
-		if _, _, _, err := parseBindMountSpec(spec); err != nil {
-			return err
-		}
-	}
-
-	//validate other volumes
-	for path := range config.Volumes {
-		if !filepath.IsAbs(path) {
-			return fmt.Errorf("Invalid volume path: %s mount paths must be absolute.", path)
-		}
-	}
-
-	//validate volumes-from
-	for _, spec := range hostConfig.VolumesFrom {
-		if _, _, err := parseVolumesFromSpec(spec); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // Create creates a new container from the given configuration with a given name.
 func (daemon *Daemon) Create(config *runconfig.Config, hostConfig *runconfig.HostConfig, name string) (*Container, []string, error) {
 	var (
