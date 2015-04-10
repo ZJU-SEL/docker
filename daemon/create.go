@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
