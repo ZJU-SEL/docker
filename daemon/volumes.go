@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/execdriver"
 	"github.com/docker/docker/pkg/chrootarchive"
 	"github.com/docker/docker/pkg/symlink"
@@ -134,7 +134,7 @@ func (container *Container) registerVolumes() {
 		}
 		v, err := container.daemon.volumes.FindOrCreateVolume(path, writable)
 		if err != nil {
-			log.Debugf("error registering volume %s: %v", path, err)
+			logrus.Debugf("error registering volume %s: %v", path, err)
 			continue
 		}
 		v.AddContainer(container.ID)
@@ -145,7 +145,7 @@ func (container *Container) derefVolumes() {
 	for path := range container.VolumePaths() {
 		vol := container.daemon.volumes.Get(path)
 		if vol == nil {
-			log.Debugf("Volume %s was not found and could not be dereferenced", path)
+			logrus.Debugf("Volume %s was not found and could not be dereferenced", path)
 			continue
 		}
 		vol.RemoveContainer(container.ID)
@@ -191,10 +191,13 @@ func (container *Container) parseVolumeMountConfig() (map[string]*Mount, error) 
 		if _, exists := container.Volumes[path]; exists {
 			continue
 		}
-
-		if stat, err := os.Stat(filepath.Join(container.basefs, path)); err == nil {
+		realPath, err := container.getResourcePath(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluate the absolute path of symlink")
+		}
+		if stat, err := os.Stat(realPath); err == nil {
 			if !stat.IsDir() {
-				return nil, fmt.Errorf("file exists at %s, can't create volume there")
+				return nil, fmt.Errorf("file exists at %s, can't create volume there", realPath)
 			}
 		}
 

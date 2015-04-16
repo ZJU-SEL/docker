@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/autogen/dockerversion"
 	"github.com/docker/docker/builder"
 	"github.com/docker/docker/builtins"
@@ -20,8 +20,9 @@ import (
 	"github.com/docker/docker/pkg/homedir"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/signal"
+	"github.com/docker/docker/pkg/system"
+	"github.com/docker/docker/pkg/timeutils"
 	"github.com/docker/docker/registry"
-	"github.com/docker/docker/utils"
 )
 
 const CanDaemon = true
@@ -40,13 +41,13 @@ func migrateKey() (err error) {
 	// Migrate trust key if exists at ~/.docker/key.json and owned by current user
 	oldPath := filepath.Join(homedir.Get(), ".docker", defaultTrustKeyFile)
 	newPath := filepath.Join(getDaemonConfDir(), defaultTrustKeyFile)
-	if _, statErr := os.Stat(newPath); os.IsNotExist(statErr) && utils.IsFileOwner(oldPath) {
+	if _, statErr := os.Stat(newPath); os.IsNotExist(statErr) && currentUserIsOwner(oldPath) {
 		defer func() {
 			// Ensure old path is removed if no error occurred
 			if err == nil {
 				err = os.Remove(oldPath)
 			} else {
-				log.Warnf("Key migration failed, key file not removed at %s", oldPath)
+				logrus.Warnf("Key migration failed, key file not removed at %s", oldPath)
 			}
 		}()
 
@@ -70,7 +71,7 @@ func migrateKey() (err error) {
 			return fmt.Errorf("error copying key: %s", err)
 		}
 
-		log.Infof("Migrated key from %s to %s", oldPath, newPath)
+		logrus.Infof("Migrated key from %s to %s", oldPath, newPath)
 	}
 
 	return nil
@@ -81,41 +82,40 @@ func mainDaemon() {
 		flag.Usage()
 		return
 	}
+
+	logrus.SetFormatter(&logrus.TextFormatter{TimestampFormat: timeutils.RFC3339NanoFixed})
+
 	eng := engine.New()
 	signal.Trap(eng.Shutdown)
 
 	if err := migrateKey(); err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 	daemonCfg.TrustKeyPath = *flTrustKey
 
 	// Load builtins
 	if err := builtins.Register(eng); err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 
-	// load registry service
-	if err := registry.NewService(registryCfg).Install(eng); err != nil {
-		log.Fatal(err)
-	}
-
+	registryService := registry.NewService(registryCfg)
 	// load the daemon in the background so we can immediately start
 	// the http api so that connections don't fail while the daemon
 	// is booting
 	daemonInitWait := make(chan error)
 	go func() {
-		d, err := daemon.NewDaemon(daemonCfg, eng)
+		d, err := daemon.NewDaemon(daemonCfg, eng, registryService)
 		if err != nil {
 			daemonInitWait <- err
 			return
 		}
 
-		log.Infof("docker daemon: %s %s; execdriver: %s; graphdriver: %s",
-			dockerversion.VERSION,
-			dockerversion.GITCOMMIT,
-			d.ExecutionDriver().Name(),
-			d.GraphDriver().String(),
-		)
+		logrus.WithFields(logrus.Fields{
+			"version":     dockerversion.VERSION,
+			"commit":      dockerversion.GITCOMMIT,
+			"execdriver":  d.ExecutionDriver().Name(),
+			"graphdriver": d.GraphDriver().String(),
+		}).Info("Docker daemon")
 
 		if err := d.Install(eng); err != nil {
 			daemonInitWait <- err
@@ -147,7 +147,6 @@ func mainDaemon() {
 	job.Setenv("TlsCa", *flCa)
 	job.Setenv("TlsCert", *flCert)
 	job.Setenv("TlsKey", *flKey)
-	job.SetenvBool("BufferRequests", true)
 
 	// The serve API job never exits unless an error occurs
 	// We need to start it as a goroutine and wait on it so
@@ -155,7 +154,7 @@ func mainDaemon() {
 	serveAPIWait := make(chan error)
 	go func() {
 		if err := job.Run(); err != nil {
-			log.Errorf("ServeAPI error: %v", err)
+			logrus.Errorf("ServeAPI error: %v", err)
 			serveAPIWait <- err
 			return
 		}
@@ -164,7 +163,7 @@ func mainDaemon() {
 
 	// Wait for the daemon startup goroutine to finish
 	// This makes sure we can actually cleanly shutdown the daemon
-	log.Debug("waiting for daemon to initialize")
+	logrus.Debug("waiting for daemon to initialize")
 	errDaemon := <-daemonInitWait
 	if errDaemon != nil {
 		eng.Shutdown()
@@ -176,9 +175,9 @@ func mainDaemon() {
 		}
 		// we must "fatal" exit here as the API server may be happy to
 		// continue listening forever if the error had no impact to API
-		log.Fatal(outStr)
+		logrus.Fatal(outStr)
 	} else {
-		log.Info("Daemon has completed initialization")
+		logrus.Info("Daemon has completed initialization")
 	}
 
 	// Daemon is fully initialized and handling API traffic
@@ -188,7 +187,18 @@ func mainDaemon() {
 	// exited the daemon process above)
 	eng.Shutdown()
 	if errAPI != nil {
-		log.Fatalf("Shutting down due to ServeAPI error: %v", errAPI)
+		logrus.Fatalf("Shutting down due to ServeAPI error: %v", errAPI)
 	}
 
+}
+
+// currentUserIsOwner checks whether the current user is the owner of the given
+// file.
+func currentUserIsOwner(f string) bool {
+	if fileInfo, err := system.Stat(f); err == nil && fileInfo != nil {
+		if int(fileInfo.Uid()) == os.Getuid() {
+			return true
+		}
+	}
+	return false
 }

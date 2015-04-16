@@ -43,7 +43,7 @@ clone git github.com/kr/pty 05017fcccf
 
 clone git github.com/gorilla/context 14f550f51a
 
-clone git github.com/gorilla/mux 136d54f81f
+clone git github.com/gorilla/mux e444e69cbd
 
 clone git github.com/tchap/go-patricia v1.0.1
 
@@ -53,7 +53,7 @@ clone hg code.google.com/p/gosqlite 74691fb6f837
 
 clone git github.com/docker/libtrust 230dfd18c232
 
-clone git github.com/Sirupsen/logrus v0.7.1
+clone git github.com/Sirupsen/logrus v0.7.2
 
 clone git github.com/go-fsnotify/fsnotify v1.0.4
 
@@ -68,14 +68,17 @@ if [ "$1" = '--go' ]; then
 	mv tmp-tar src/code.google.com/p/go/src/pkg/archive/tar
 fi
 
-# get digest package from distribution
+# get distribution packages
 clone git github.com/docker/distribution d957768537c5af40e4f4cd96871f7b2bde9e2923
 mv src/github.com/docker/distribution/digest tmp-digest
+mv src/github.com/docker/distribution/registry/api tmp-api
 rm -rf src/github.com/docker/distribution
 mkdir -p src/github.com/docker/distribution
 mv tmp-digest src/github.com/docker/distribution/digest
+mkdir -p src/github.com/docker/distribution/registry
+mv tmp-api src/github.com/docker/distribution/registry/api
 
-clone git github.com/docker/libcontainer a6044b701c166fe538fc760f9e2dcea3d737cd2a
+clone git github.com/docker/libcontainer bd8ec36106086f72b66e1be85a81202b93503e44
 # see src/github.com/docker/libcontainer/update-vendor.sh which is the "source of truth" for libcontainer deps (just like this file)
 rm -rf src/github.com/docker/libcontainer/vendor
 eval "$(grep '^clone ' src/github.com/docker/libcontainer/update-vendor.sh | grep -v 'github.com/codegangsta/cli' | grep -v 'github.com/Sirupsen/logrus')"

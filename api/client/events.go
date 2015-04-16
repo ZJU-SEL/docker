@@ -9,9 +9,11 @@ import (
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/parsers/filters"
 	"github.com/docker/docker/pkg/timeutils"
-	"github.com/docker/docker/utils"
 )
 
+// CmdEvents prints a live stream of real time events from the server.
+//
+// Usage: docker events [OPTIONS]
 func (cli *DockerCli) CmdEvents(args ...string) error {
 	cmd := cli.Subcmd("events", "", "Get real time events from the server", true)
 	since := cmd.String([]string{"#since", "-since"}, "", "Show all events created since timestamp")
@@ -20,7 +22,7 @@ func (cli *DockerCli) CmdEvents(args ...string) error {
 	cmd.Var(&flFilter, []string{"f", "-filter"}, "Filter output based on conditions provided")
 	cmd.Require(flag.Exact, 0)
 
-	utils.ParseFlags(cmd, args, true)
+	cmd.ParseFlags(args, true)
 
 	var (
 		v               = url.Values{}
@@ -55,11 +57,11 @@ func (cli *DockerCli) CmdEvents(args ...string) error {
 		setTime("until", *until)
 	}
 	if len(eventFilterArgs) > 0 {
-		filterJson, err := filters.ToParam(eventFilterArgs)
+		filterJSON, err := filters.ToParam(eventFilterArgs)
 		if err != nil {
 			return err
 		}
-		v.Set("filters", filterJson)
+		v.Set("filters", filterJSON)
 	}
 	if err := cli.stream("GET", "/events?"+v.Encode(), nil, cli.out, nil); err != nil {
 		return err

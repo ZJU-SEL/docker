@@ -27,7 +27,7 @@ is_set() {
 	zgrep "CONFIG_$1=[y|m]" "$CONFIG" > /dev/null
 }
 
-# see http://en.wikipedia.org/wiki/ANSI_escape_code#Colors
+# see https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
 declare -A colors=(
 	[black]=30
 	[red]=31
@@ -151,10 +151,17 @@ check_flags "${flags[@]}"
 echo
 
 echo 'Optional Features:'
+{
+	check_flags MEMCG_SWAP 
+	check_flags MEMCG_SWAP_ENABLED
+	if  is_set MEMCG_SWAP && ! is_set MEMCG_SWAP_ENABLED; then
+		echo "    $(wrap_color '(note that cgroup swap accounting is not enabled in your kernel config, you can enable it by setting boot option "swapaccount=1")' bold black)"
+	fi
+}
 flags=(
-	MEMCG_SWAP
 	RESOURCE_COUNTERS
 	CGROUP_PERF
+	CFS_BANDWIDTH
 )
 check_flags "${flags[@]}"
 

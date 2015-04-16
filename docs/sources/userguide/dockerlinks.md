@@ -16,7 +16,7 @@ container linking.
 In [the Using Docker section](/userguide/usingdocker), you created a
 container that ran a Python Flask application:
 
-    $ sudo docker run -d -P training/webapp python app.py
+    $ docker run -d -P training/webapp python app.py
 
 > **Note:** 
 > Containers have an internal network and an IP address
@@ -30,14 +30,15 @@ any network port inside it to a random high port within an *ephemeral port
 range* on your Docker host. Next, when `docker ps` was run, you saw that port
 5000 in the container was bound to port 49155 on the host.
 
-    $ sudo docker ps nostalgic_morse
+    $ docker ps nostalgic_morse
     CONTAINER ID  IMAGE                   COMMAND       CREATED        STATUS        PORTS                    NAMES
     bc533791f3f5  training/webapp:latest  python app.py 5 seconds ago  Up 2 seconds  0.0.0.0:49155->5000/tcp  nostalgic_morse
 
 You also saw how you can bind a container's ports to a specific port using
-the `-p` flag:
+the `-p` flag. Here port 80 of the host is mapped to port 5000 of the 
+container:
 
-    $ sudo docker run -d -p 5000:5000 training/webapp python app.py
+    $ docker run -d -p 80:5000 training/webapp python app.py
 
 And you saw why this isn't such a great idea because it constrains you to
 only one container on that specific port.
@@ -47,26 +48,26 @@ default the `-p` flag will bind the specified port to all interfaces on
 the host machine. But you can also specify a binding to a specific
 interface, for example only to the `localhost`.
 
-    $ sudo docker run -d -p 127.0.0.1:5000:5000 training/webapp python app.py
+    $ docker run -d -p 127.0.0.1:80:5000 training/webapp python app.py
 
-This would bind port 5000 inside the container to port 5000 on the
+This would bind port 5000 inside the container to port 80 on the
 `localhost` or `127.0.0.1` interface on the host machine.
 
 Or, to bind port 5000 of the container to a dynamic port but only on the
 `localhost`, you could use:
 
-    $ sudo docker run -d -p 127.0.0.1::5000 training/webapp python app.py
+    $ docker run -d -p 127.0.0.1::5000 training/webapp python app.py
 
 You can also bind UDP ports by adding a trailing `/udp`. For example:
 
-    $ sudo docker run -d -p 127.0.0.1:5000:5000/udp training/webapp python app.py
+    $ docker run -d -p 127.0.0.1:80:5000/udp training/webapp python app.py
 
 You also learned about the useful `docker port` shortcut which showed us the
 current port bindings. This is also useful for showing you specific port
 configurations. For example, if you've bound the container port to the
 `localhost` on the host machine, then the `docker port` output will reflect that.
 
-    $ sudo docker port nostalgic_morse 5000
+    $ docker port nostalgic_morse 5000
     127.0.0.1:49155
 
 > **Note:** 
@@ -98,19 +99,19 @@ yourself. This naming provides two useful functions:
 
 You can name your container by using the `--name` flag, for example:
 
-    $ sudo docker run -d -P --name web training/webapp python app.py
+    $ docker run -d -P --name web training/webapp python app.py
 
 This launches a new container and uses the `--name` flag to
 name the container `web`. You can see the container's name using the
 `docker ps` command.
 
-    $ sudo docker ps -l
+    $ docker ps -l
     CONTAINER ID  IMAGE                  COMMAND        CREATED       STATUS       PORTS                    NAMES
     aed84ee21bde  training/webapp:latest python app.py  12 hours ago  Up 2 seconds 0.0.0.0:49154->5000/tcp  web
 
 You can also use `docker inspect` to return the container's name.
 
-    $ sudo docker inspect -f "{{ .Name }}" aed84ee21bde
+    $ docker inspect -f "{{ .Name }}" aed84ee21bde
     /web
 
 > **Note:** 
@@ -129,7 +130,7 @@ source container and a recipient container. The recipient can then access select
 about the source. To create a link, you use the `--link` flag. First, create a new
 container, this time one containing a database.
 
-    $ sudo docker run -d --name db training/postgres
+    $ docker run -d --name db training/postgres
 
 This creates a new container called `db` from the `training/postgres`
 image, which contains a PostgreSQL database.
@@ -137,11 +138,11 @@ image, which contains a PostgreSQL database.
 Now, you need to delete the `web` container you created previously so you can replace it
 with a linked one:
 
-    $ sudo docker rm -f web
+    $ docker rm -f web
 
 Now, create a new `web` container and link it with your `db` container.
 
-    $ sudo docker run -d -P --name web --link db:db training/webapp python app.py
+    $ docker run -d -P --name web --link db:db training/webapp python app.py
 
 This will link the new `web` container with the `db` container you created
 earlier. The `--link` flag takes the form:
@@ -153,7 +154,7 @@ alias for the link name. You'll see how that alias gets used shortly.
 
 Next, inspect your linked containers with `docker inspect`:
 
-    $ sudo docker inspect -f "{{ .HostConfig.Links }}" web
+    $ docker inspect -f "{{ .HostConfig.Links }}" web
     [/db:/web/db]
 
 You can see that the `web` container is now linked to the `db` container
@@ -239,7 +240,7 @@ Returning back to our database example, you can run the `env`
 command to list the specified container's environment variables.
 
 ```
-    $ sudo docker run --rm --name web2 --link db:db training/webapp env
+    $ docker run --rm --name web2 --link db:db training/webapp env
     . . .
     DB_NAME=/web2/db
     DB_PORT=tcp://172.17.0.5:5432
@@ -276,7 +277,7 @@ In addition to the environment variables, Docker adds a host entry for the
 source container to the `/etc/hosts` file. Here's an entry for the `web`
 container:
 
-    $ sudo docker run -t -i --rm --link db:webdb training/webapp /bin/bash
+    $ docker run -t -i --rm --link db:webdb training/webapp /bin/bash
     root@aed84ee21bde:/opt/webapp# cat /etc/hosts
     172.17.0.7  aed84ee21bde
     . . .
@@ -314,9 +315,9 @@ If you restart the source container, the linked containers `/etc/hosts` files
 will be automatically updated with the source container's new IP address,
 allowing linked communication to continue.
 
-    $ sudo docker restart db
+    $ docker restart db
     db
-    $ sudo docker run -t -i --rm --link db:db training/webapp /bin/bash
+    $ docker run -t -i --rm --link db:db training/webapp /bin/bash
     root@aed84ee21bde:/opt/webapp# cat /etc/hosts
     172.17.0.7  aed84ee21bde
     . . .

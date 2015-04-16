@@ -121,8 +121,25 @@ Finally, several networking options can only be provided when calling
  *  `-P` or `--publish-all=true|false` — see
     [Binding container ports](#binding-ports)
 
-The following sections tackle all of the above topics in an order that
-moves roughly from simplest to most complex.
+To supply networking options to the Docker server at startup, use the
+`DOCKER_OPTS` variable in the Docker upstart configuration file. For Ubuntu, edit the
+variable in `/etc/default/docker` or `/etc/sysconfig/docker` for CentOS.
+
+The following example illustrates how to configure Docker on Ubuntu to recognize a
+newly built bridge. 
+
+Edit the `/etc/default/docker` file:
+
+    $ echo 'DOCKER_OPTS="-b=bridge0"' >> /etc/default/docker 
+
+Then restart the Docker server.
+
+    $ sudo service docker start
+
+For additional information on bridges, see [building your own
+bridge](#building-your-own-bridge) later on this page.
+
+The following sections tackle all of the above topics in an order that we can move roughly from simplest to most complex.
 
 ## Configuring DNS
 
@@ -296,8 +313,7 @@ system level, by two factors.
     policy to `DROP` if `--icc=false`.
 
 It is a strategic question whether to leave `--icc=true` or change it to
-`--icc=false` (on Ubuntu, by editing the `DOCKER_OPTS` variable in
-`/etc/default/docker` and restarting the Docker server) so that
+`--icc=false` so that
 `iptables` will protect other containers — and the main host — from
 having arbitrary ports probed or accessed by a container that gets
 compromised.
@@ -426,8 +442,7 @@ you can use either `-p IP:host_port:container_port` or `-p IP::port` to
 specify the external interface for one particular binding.
 
 Or if you always want Docker port forwards to bind to one specific IP
-address, you can edit your system-wide Docker server settings (on
-Ubuntu, by editing `DOCKER_OPTS` in `/etc/default/docker`) and add the
+address, you can edit your system-wide Docker server settings and add the
 option `--ip=IP_ADDRESS`.  Remember to restart your Docker server after
 editing this setting.
 
@@ -628,7 +643,7 @@ adapted to the individual environment.
 
 #### Routed Network Environment
 
-In a routed network environment you replace the level 2 switch with a level 3
+In a routed network environment you replace the layer 2 switch with a layer 3
 router. Now the hosts just have to know their default gateway (the router) and
 the route to their own containers (managed by Docker). The router holds all
 routing information about the Docker subnets. When you add or remove a host to
@@ -652,7 +667,7 @@ for Docker. When adding a third host you would add a route for the subnet
 Remember the subnet for Docker containers should at least have a size of `/80`.
 This way an IPv6 address can end with the container's MAC address and you
 prevent NDP neighbor cache invalidation issues in the Docker layer. So if you
-have a `/64` for your whole environment use `/68` subnets for the hosts and
+have a `/64` for your whole environment use `/78` subnets for the hosts and
 `/80` for the containers. This way you can use 4096 hosts with 16 `/80` subnets
 each.
 
@@ -692,9 +707,6 @@ options are configurable at server startup:
 
  *  `--mtu=BYTES` — override the maximum packet length on `docker0`.
 
-On Ubuntu you would add these to the `DOCKER_OPTS` setting in
-`/etc/default/docker` on your Docker host and restarting the Docker
-service.
 
 Once you have one or more containers up and running, you can confirm
 that Docker has properly connected them to the `docker0` bridge by
@@ -723,7 +735,7 @@ the Internet.
 
     # The network, as seen from a container
 
-    $ sudo docker run -i -t --rm base /bin/bash
+    $ docker run -i -t --rm base /bin/bash
 
     $$ ip addr show eth0
     24: eth0: <BROADCAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
@@ -908,14 +920,14 @@ Docker do all of the configuration:
     # At one shell, start a container and
     # leave its shell idle and running
 
-    $ sudo docker run -i -t --rm --net=none base /bin/bash
+    $ docker run -i -t --rm --net=none base /bin/bash
     root@63f36fc01b5f:/#
 
     # At another shell, learn the container process ID
     # and create its namespace entry in /var/run/netns/
     # for the "ip netns" command we will be using below
 
-    $ sudo docker inspect -f '{{.State.Pid}}' 63f36fc01b5f
+    $ docker inspect -f '{{.State.Pid}}' 63f36fc01b5f
     2778
     $ pid=2778
     $ sudo mkdir -p /var/run/netns
@@ -1016,18 +1028,18 @@ the previous section to go something like this:
 
     # Start up two containers in two terminal windows
 
-    $ sudo docker run -i -t --rm --net=none base /bin/bash
+    $ docker run -i -t --rm --net=none base /bin/bash
     root@1f1f4c1f931a:/#
 
-    $ sudo docker run -i -t --rm --net=none base /bin/bash
+    $ docker run -i -t --rm --net=none base /bin/bash
     root@12e343489d2f:/#
 
     # Learn the container process IDs
     # and create their namespace entries
 
-    $ sudo docker inspect -f '{{.State.Pid}}' 1f1f4c1f931a
+    $ docker inspect -f '{{.State.Pid}}' 1f1f4c1f931a
     2989
-    $ sudo docker inspect -f '{{.State.Pid}}' 12e343489d2f
+    $ docker inspect -f '{{.State.Pid}}' 12e343489d2f
     3004
     $ sudo mkdir -p /var/run/netns
     $ sudo ln -s /proc/2989/ns/net /var/run/netns/2989

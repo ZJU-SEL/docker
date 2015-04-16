@@ -19,7 +19,7 @@ import (
 func TestExec(t *testing.T) {
 	defer deleteAllContainers()
 
-	runCmd := exec.Command(dockerBinary, "run", "-d", "--name", "testing", "busybox", "sh", "-c", "echo test > /tmp/file && sleep 100")
+	runCmd := exec.Command(dockerBinary, "run", "-d", "--name", "testing", "busybox", "sh", "-c", "echo test > /tmp/file && top")
 	if out, _, _, err := runCommandWithStdoutStderr(runCmd); err != nil {
 		t.Fatal(out, err)
 	}
@@ -82,7 +82,7 @@ func TestExecInteractiveStdinClose(t *testing.T) {
 func TestExecInteractive(t *testing.T) {
 	defer deleteAllContainers()
 
-	runCmd := exec.Command(dockerBinary, "run", "-d", "--name", "testing", "busybox", "sh", "-c", "echo test > /tmp/file && sleep 100")
+	runCmd := exec.Command(dockerBinary, "run", "-d", "--name", "testing", "busybox", "sh", "-c", "echo test > /tmp/file && top")
 	if out, _, _, err := runCommandWithStdoutStderr(runCmd); err != nil {
 		t.Fatal(out, err)
 	}
@@ -141,7 +141,7 @@ func TestExecAfterContainerRestart(t *testing.T) {
 		t.Fatal(out, err)
 	}
 
-	cleanedContainerID := stripTrailingCharacters(out)
+	cleanedContainerID := strings.TrimSpace(out)
 
 	runCmd = exec.Command(dockerBinary, "restart", cleanedContainerID)
 	if out, _, err = runCommandWithOutput(runCmd); err != nil {
@@ -253,7 +253,7 @@ func TestExecPausedContainer(t *testing.T) {
 		t.Fatal(out, err)
 	}
 
-	ContainerID := stripTrailingCharacters(out)
+	ContainerID := strings.TrimSpace(out)
 
 	pausedCmd := exec.Command(dockerBinary, "pause", "testing")
 	out, _, _, err = runCommandWithStdoutStderr(pausedCmd)
@@ -500,13 +500,13 @@ func TestLinksPingLinkedContainersOnRename(t *testing.T) {
 	defer deleteAllContainers()
 
 	var out string
-	out, _, _ = dockerCmd(t, "run", "-d", "--name", "container1", "busybox", "sleep", "10")
-	idA := stripTrailingCharacters(out)
+	out, _, _ = dockerCmd(t, "run", "-d", "--name", "container1", "busybox", "top")
+	idA := strings.TrimSpace(out)
 	if idA == "" {
 		t.Fatal(out, "id should not be nil")
 	}
-	out, _, _ = dockerCmd(t, "run", "-d", "--link", "container1:alias1", "--name", "container2", "busybox", "sleep", "10")
-	idB := stripTrailingCharacters(out)
+	out, _, _ = dockerCmd(t, "run", "-d", "--link", "container1:alias1", "--name", "container2", "busybox", "top")
+	idB := strings.TrimSpace(out)
 	if idB == "" {
 		t.Fatal(out, "id should not be nil")
 	}
@@ -664,4 +664,60 @@ func TestRunMutableNetworkFiles(t *testing.T) {
 		}
 	}
 	logDone("run - mutable network files")
+}
+
+func TestExecWithUser(t *testing.T) {
+	defer deleteAllContainers()
+
+	runCmd := exec.Command(dockerBinary, "run", "-d", "--name", "parent", "busybox", "top")
+	if out, _, err := runCommandWithOutput(runCmd); err != nil {
+		t.Fatal(out, err)
+	}
+
+	cmd := exec.Command(dockerBinary, "exec", "-u", "1", "parent", "id")
+	out, _, err := runCommandWithOutput(cmd)
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	if !strings.Contains(out, "uid=1(daemon) gid=1(daemon)") {
+		t.Fatalf("exec with user by id expected daemon user got %s", out)
+	}
+
+	cmd = exec.Command(dockerBinary, "exec", "-u", "root", "parent", "id")
+	out, _, err = runCommandWithOutput(cmd)
+	if err != nil {
+		t.Fatal(err, out)
+	}
+	if !strings.Contains(out, "uid=0(root) gid=0(root)") {
+		t.Fatalf("exec with user by root expected root user got %s", out)
+	}
+
+	logDone("exec - with user")
+}
+
+func TestExecWithPrivileged(t *testing.T) {
+	defer deleteAllContainers()
+
+	runCmd := exec.Command(dockerBinary, "run", "-d", "--name", "parent", "--cap-drop=ALL", "busybox", "top")
+	if out, _, err := runCommandWithOutput(runCmd); err != nil {
+		t.Fatal(out, err)
+	}
+
+	cmd := exec.Command(dockerBinary, "exec", "parent", "sh", "-c", "mknod /tmp/sda b 8 0")
+	out, _, err := runCommandWithOutput(cmd)
+	if err == nil || !strings.Contains(out, "Operation not permitted") {
+		t.Fatalf("exec mknod in --cap-drop=ALL container without --privileged should failed")
+	}
+
+	cmd = exec.Command(dockerBinary, "exec", "--privileged", "parent", "sh", "-c", "mknod /tmp/sda b 8 0 && echo ok")
+	out, _, err = runCommandWithOutput(cmd)
+	if err != nil {
+		t.Fatal(err, out)
+	}
+
+	if actual := strings.TrimSpace(out); actual != "ok" {
+		t.Fatalf("exec mknod in --cap-drop=ALL container with --privileged failed: %v, output: %q", err, out)
+	}
+
+	logDone("exec - exec command in a container with privileged")
 }

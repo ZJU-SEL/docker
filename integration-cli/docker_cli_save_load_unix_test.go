@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/docker/docker/vendor/src/github.com/kr/pty"
@@ -20,7 +21,7 @@ func TestSaveAndLoadRepoStdout(t *testing.T) {
 		t.Fatalf("failed to create a container: %s, %v", out, err)
 	}
 
-	cleanedContainerID := stripTrailingCharacters(out)
+	cleanedContainerID := strings.TrimSpace(out)
 
 	repoName := "foobar-save-load-test"
 
@@ -70,8 +71,6 @@ func TestSaveAndLoadRepoStdout(t *testing.T) {
 
 	os.Remove("/tmp/foobar-save-load-test.tar")
 
-	logDone("save - save/load a repo using stdout")
-
 	pty, tty, err := pty.Open()
 	if err != nil {
 		t.Fatalf("Could not open pty: %v", err)
@@ -98,5 +97,5 @@ func TestSaveAndLoadRepoStdout(t *testing.T) {
 		t.Fatal("help output is not being yielded", out)
 	}
 
-	logDone("save - do not save to a tty")
+	logDone("save - save/load a repo using stdout")
 }

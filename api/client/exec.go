@@ -5,23 +5,25 @@ import (
 	"fmt"
 	"io"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/pkg/promise"
 	"github.com/docker/docker/runconfig"
-	"github.com/docker/docker/utils"
 )
 
+// CmdExec runs a command in a running container.
+//
+// Usage: docker exec [OPTIONS] CONTAINER COMMAND [ARG...]
 func (cli *DockerCli) CmdExec(args ...string) error {
 	cmd := cli.Subcmd("exec", "CONTAINER COMMAND [ARG...]", "Run a command in a running container", true)
 
 	execConfig, err := runconfig.ParseExec(cmd, args)
 	// just in case the ParseExec does not exit
 	if execConfig.Container == "" || err != nil {
-		return &utils.StatusError{StatusCode: 1}
+		return StatusError{StatusCode: 1}
 	}
 
-	stream, _, err := cli.call("POST", "/containers/"+execConfig.Container+"/exec", execConfig, false)
+	stream, _, err := cli.call("POST", "/containers/"+execConfig.Container+"/exec", execConfig, nil)
 	if err != nil {
 		return err
 	}
@@ -46,7 +48,7 @@ func (cli *DockerCli) CmdExec(args ...string) error {
 			return err
 		}
 	} else {
-		if _, _, err := readBody(cli.call("POST", "/exec/"+execID+"/start", execConfig, false)); err != nil {
+		if _, _, err := readBody(cli.call("POST", "/exec/"+execID+"/start", execConfig, nil)); err != nil {
 			return err
 		}
 		// For now don't print this - wait for when we support exec wait()
@@ -64,9 +66,9 @@ func (cli *DockerCli) CmdExec(args ...string) error {
 
 	// Block the return until the chan gets closed
 	defer func() {
-		log.Debugf("End of CmdExec(), Waiting for hijack to finish.")
+		logrus.Debugf("End of CmdExec(), Waiting for hijack to finish.")
 		if _, ok := <-hijacked; ok {
-			log.Errorf("Hijack did not finish (chan still open)")
+			logrus.Errorf("Hijack did not finish (chan still open)")
 		}
 	}()
 
@@ -97,19 +99,19 @@ func (cli *DockerCli) CmdExec(args ...string) error {
 		}
 	case err := <-errCh:
 		if err != nil {
-			log.Debugf("Error hijack: %s", err)
+			logrus.Debugf("Error hijack: %s", err)
 			return err
 		}
 	}
 
 	if execConfig.Tty && cli.isTerminalIn {
 		if err := cli.monitorTtySize(execID, true); err != nil {
-			log.Errorf("Error monitoring TTY size: %s", err)
+			logrus.Errorf("Error monitoring TTY size: %s", err)
 		}
 	}
 
 	if err := <-errCh; err != nil {
-		log.Debugf("Error hijack: %s", err)
+		logrus.Debugf("Error hijack: %s", err)
 		return err
 	}
 
@@ -119,7 +121,7 @@ func (cli *DockerCli) CmdExec(args ...string) error {
 	}
 
 	if status != 0 {
-		return &utils.StatusError{StatusCode: status}
+		return StatusError{StatusCode: status}
 	}
 
 	return nil

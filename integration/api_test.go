@@ -16,6 +16,7 @@ import (
 
 	"github.com/docker/docker/api"
 	"github.com/docker/docker/api/server"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/builder"
 	"github.com/docker/docker/engine"
 	"github.com/docker/docker/runconfig"
@@ -90,7 +91,7 @@ func TestGetContainersTop(t *testing.T) {
 	containerID := createTestContainer(eng,
 		&runconfig.Config{
 			Image:     unitTestImageID,
-			Cmd:       []string{"/bin/sh", "-c", "cat"},
+			Cmd:       runconfig.NewCommand("/bin/sh", "-c", "cat"),
 			OpenStdin: true,
 		},
 		t,
@@ -167,7 +168,7 @@ func TestPostCommit(t *testing.T) {
 	containerID := createTestContainer(eng,
 		&runconfig.Config{
 			Image: unitTestImageID,
-			Cmd:   []string{"touch", "/test"},
+			Cmd:   runconfig.NewCommand("touch", "/test"),
 		},
 		t,
 	)
@@ -200,9 +201,8 @@ func TestPostContainersCreate(t *testing.T) {
 	defer mkDaemonFromEngine(eng, t).Nuke()
 
 	configJSON, err := json.Marshal(&runconfig.Config{
-		Image:  unitTestImageID,
-		Memory: 33554432,
-		Cmd:    []string{"touch", "/test"},
+		Image: unitTestImageID,
+		Cmd:   runconfig.NewCommand("touch", "/test"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -241,9 +241,8 @@ func TestPostJsonVerify(t *testing.T) {
 	defer mkDaemonFromEngine(eng, t).Nuke()
 
 	configJSON, err := json.Marshal(&runconfig.Config{
-		Image:  unitTestImageID,
-		Memory: 33554432,
-		Cmd:    []string{"touch", "/test"},
+		Image: unitTestImageID,
+		Cmd:   runconfig.NewCommand("touch", "/test"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -329,8 +328,8 @@ func TestPostCreateNull(t *testing.T) {
 	containerAssertExists(eng, containerID, t)
 
 	c, _ := daemon.Get(containerID)
-	if c.Config.Cpuset != "" {
-		t.Fatalf("Cpuset should have been empty - instead its:" + c.Config.Cpuset)
+	if c.HostConfig().CpusetCpus != "" {
+		t.Fatalf("Cpuset should have been empty - instead its:" + c.HostConfig().CpusetCpus)
 	}
 }
 
@@ -341,7 +340,7 @@ func TestPostContainersKill(t *testing.T) {
 	containerID := createTestContainer(eng,
 		&runconfig.Config{
 			Image:     unitTestImageID,
-			Cmd:       []string{"/bin/cat"},
+			Cmd:       runconfig.NewCommand("/bin/cat"),
 			OpenStdin: true,
 		},
 		t,
@@ -378,7 +377,7 @@ func TestPostContainersRestart(t *testing.T) {
 	containerID := createTestContainer(eng,
 		&runconfig.Config{
 			Image:     unitTestImageID,
-			Cmd:       []string{"/bin/top"},
+			Cmd:       runconfig.NewCommand("/bin/top"),
 			OpenStdin: true,
 		},
 		t,
@@ -422,7 +421,7 @@ func TestPostContainersStart(t *testing.T) {
 		eng,
 		&runconfig.Config{
 			Image:     unitTestImageID,
-			Cmd:       []string{"/bin/cat"},
+			Cmd:       runconfig.NewCommand("/bin/cat"),
 			OpenStdin: true,
 		},
 		t,
@@ -472,7 +471,7 @@ func TestPostContainersStop(t *testing.T) {
 	containerID := createTestContainer(eng,
 		&runconfig.Config{
 			Image:     unitTestImageID,
-			Cmd:       []string{"/bin/top"},
+			Cmd:       runconfig.NewCommand("/bin/top"),
 			OpenStdin: true,
 		},
 		t,
@@ -524,7 +523,7 @@ func TestPostContainersWait(t *testing.T) {
 	containerID := createTestContainer(eng,
 		&runconfig.Config{
 			Image:     unitTestImageID,
-			Cmd:       []string{"/bin/sleep", "1"},
+			Cmd:       runconfig.NewCommand("/bin/sleep", "1"),
 			OpenStdin: true,
 		},
 		t,
@@ -560,7 +559,7 @@ func TestPostContainersAttach(t *testing.T) {
 	containerID := createTestContainer(eng,
 		&runconfig.Config{
 			Image:     unitTestImageID,
-			Cmd:       []string{"/bin/cat"},
+			Cmd:       runconfig.NewCommand("/bin/cat"),
 			OpenStdin: true,
 		},
 		t,
@@ -636,7 +635,7 @@ func TestPostContainersAttachStderr(t *testing.T) {
 	containerID := createTestContainer(eng,
 		&runconfig.Config{
 			Image:     unitTestImageID,
-			Cmd:       []string{"/bin/sh", "-c", "/bin/cat >&2"},
+			Cmd:       runconfig.NewCommand("/bin/sh", "-c", "/bin/cat >&2"),
 			OpenStdin: true,
 		},
 		t,
@@ -766,8 +765,8 @@ func TestDeleteImages(t *testing.T) {
 
 	images := getImages(eng, t, true, "")
 
-	if len(images.Data[0].GetList("RepoTags")) != len(initialImages.Data[0].GetList("RepoTags"))+1 {
-		t.Errorf("Expected %d images, %d found", len(initialImages.Data[0].GetList("RepoTags"))+1, len(images.Data[0].GetList("RepoTags")))
+	if len(images[0].RepoTags) != len(initialImages[0].RepoTags)+1 {
+		t.Errorf("Expected %d images, %d found", len(initialImages[0].RepoTags)+1, len(images[0].RepoTags))
 	}
 
 	req, err := http.NewRequest("DELETE", "/images/"+unitTestImageID, nil)
@@ -793,17 +792,19 @@ func TestDeleteImages(t *testing.T) {
 		t.Fatalf("%d OK expected, received %d\n", http.StatusOK, r.Code)
 	}
 
-	outs := engine.NewTable("Created", 0)
-	if _, err := outs.ReadListFrom(r2.Body.Bytes()); err != nil {
+	delImages := []types.ImageDelete{}
+	err = json.Unmarshal(r2.Body.Bytes(), &delImages)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(outs.Data) != 1 {
-		t.Fatalf("Expected %d event (untagged), got %d", 1, len(outs.Data))
+
+	if len(delImages) != 1 {
+		t.Fatalf("Expected %d event (untagged), got %d", 1, len(delImages))
 	}
 	images = getImages(eng, t, false, "")
 
-	if images.Len() != initialImages.Len() {
-		t.Errorf("Expected %d image, %d found", initialImages.Len(), images.Len())
+	if len(images) != len(initialImages) {
+		t.Errorf("Expected %d image, %d found", len(initialImages), len(images))
 	}
 }
 
@@ -815,7 +816,7 @@ func TestPostContainersCopy(t *testing.T) {
 	containerID := createTestContainer(eng,
 		&runconfig.Config{
 			Image: unitTestImageID,
-			Cmd:   []string{"touch", "/test.txt"},
+			Cmd:   runconfig.NewCommand("touch", "/test.txt"),
 		},
 		t,
 	)
@@ -929,7 +930,7 @@ func TestConstainersStartChunkedEncodingHostConfig(t *testing.T) {
 	req.Header.Add("Content-Type", "application/json")
 	// This is a cheat to make the http request do chunked encoding
 	// Otherwise (just setting the Content-Encoding to chunked) net/http will overwrite
-	// http://golang.org/src/pkg/net/http/request.go?s=11980:12172
+	// https://golang.org/src/pkg/net/http/request.go?s=11980:12172
 	req.ContentLength = -1
 	server.ServeRequest(eng, api.APIVERSION, r, req)
 	assertHttpNotError(r, t)

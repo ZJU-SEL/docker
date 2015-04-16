@@ -214,13 +214,19 @@ func TestBuildEnvironmentReplacementAddCopy(t *testing.T) {
   ENV baz foo
   ENV quux bar
   ENV dot .
+  ENV fee fff
+  ENV gee ggg
 
   ADD ${baz} ${dot}
   COPY ${quux} ${dot}
+  ADD ${zzz:-${fee}} ${dot}
+  COPY ${zzz:-${gee}} ${dot}
   `,
 		map[string]string{
 			"foo": "test1",
 			"bar": "test2",
+			"fff": "test3",
+			"ggg": "test4",
 		})
 
 	if err != nil {
@@ -284,6 +290,11 @@ func TestBuildEnvironmentReplacementEnv(t *testing.T) {
 		} else if strings.HasPrefix(parts[0], "env") {
 			envCount++
 			if parts[1] != "zzz" {
+				t.Fatalf("%s should be 'foo' but instead its %q", parts[0], parts[1])
+			}
+		} else if strings.HasPrefix(parts[0], "env") {
+			envCount++
+			if parts[1] != "foo" {
 				t.Fatalf("%s should be 'foo' but instead its %q", parts[0], parts[1])
 			}
 		}
@@ -492,7 +503,7 @@ func TestBuildOnBuildForbiddenMaintainerInSourceImage(t *testing.T) {
 		t.Fatal(out, err)
 	}
 
-	cleanedContainerID := stripTrailingCharacters(out)
+	cleanedContainerID := strings.TrimSpace(out)
 
 	commitCmd := exec.Command(dockerBinary, "commit", "--run", "{\"OnBuild\":[\"MAINTAINER docker.io\"]}", cleanedContainerID, "onbuild")
 
@@ -526,7 +537,7 @@ func TestBuildOnBuildForbiddenFromInSourceImage(t *testing.T) {
 		t.Fatal(out, err)
 	}
 
-	cleanedContainerID := stripTrailingCharacters(out)
+	cleanedContainerID := strings.TrimSpace(out)
 
 	commitCmd := exec.Command(dockerBinary, "commit", "--run", "{\"OnBuild\":[\"FROM busybox\"]}", cleanedContainerID, "onbuild")
 
@@ -560,7 +571,7 @@ func TestBuildOnBuildForbiddenChainedInSourceImage(t *testing.T) {
 		t.Fatal(out, err)
 	}
 
-	cleanedContainerID := stripTrailingCharacters(out)
+	cleanedContainerID := strings.TrimSpace(out)
 
 	commitCmd := exec.Command(dockerBinary, "commit", "--run", "{\"OnBuild\":[\"ONBUILD RUN ls\"]}", cleanedContainerID, "onbuild")
 
@@ -1911,8 +1922,6 @@ func TestBuildWithInaccessibleFilesInContext(t *testing.T) {
 
 	}
 	logDone("build - ADD from context with inaccessible files must not pass")
-	logDone("build - ADD from context with accessible links must work")
-	logDone("build - ADD from context with ignored inaccessible files must work")
 }
 
 func TestBuildForceRm(t *testing.T) {
@@ -1954,8 +1963,8 @@ func TestBuildForceRm(t *testing.T) {
 // * When docker events sees container start, close the "docker build" command
 // * Wait for docker events to emit a dying event.
 func TestBuildCancelationKillsSleep(t *testing.T) {
-	// TODO(jfrazelle): Make this work on Windows.
-	testRequires(t, SameHostDaemon)
+	var wg sync.WaitGroup
+	defer wg.Wait()
 
 	name := "testbuildcancelation"
 	defer deleteImages(name)
@@ -1968,26 +1977,23 @@ func TestBuildCancelationKillsSleep(t *testing.T) {
 	}
 	defer ctx.Close()
 
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
 	finish := make(chan struct{})
 	defer close(finish)
 
 	eventStart := make(chan struct{})
 	eventDie := make(chan struct{})
+	containerID := make(chan string)
 
-	// Start one second ago, to avoid rounding problems
-	startEpoch := time.Now().Add(-1 * time.Second)
+	startEpoch := daemonTime(t).Unix()
 
-	// Goroutine responsible for watching start/die events from `docker events`
 	wg.Add(1)
+	// Goroutine responsible for watching start/die events from `docker events`
 	go func() {
 		defer wg.Done()
-
 		// Watch for events since epoch.
-		eventsCmd := exec.Command(dockerBinary, "events",
-			"-since", fmt.Sprint(startEpoch.Unix()))
+		eventsCmd := exec.Command(
+			dockerBinary, "events",
+			"--since", strconv.FormatInt(startEpoch, 10))
 		stdout, err := eventsCmd.StdoutPipe()
 		err = eventsCmd.Start()
 		if err != nil {
@@ -1999,28 +2005,21 @@ func TestBuildCancelationKillsSleep(t *testing.T) {
 			eventsCmd.Process.Kill()
 		}()
 
-		var started, died bool
-		matchStart := regexp.MustCompile(" \\(from busybox\\:latest\\) start$")
-		matchDie := regexp.MustCompile(" \\(from busybox\\:latest\\) die$")
+		cid := <-containerID
+
+		matchStart := regexp.MustCompile(cid + `(.*) start$`)
+		matchDie := regexp.MustCompile(cid + `(.*) die$`)
 
 		//
 		// Read lines of `docker events` looking for container start and stop.
 		//
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
-			if ok := matchStart.MatchString(scanner.Text()); ok {
-				if started {
-					t.Fatal("assertion fail: more than one container started")
-				}
+			switch {
+			case matchStart.MatchString(scanner.Text()):
 				close(eventStart)
-				started = true
-			}
-			if ok := matchDie.MatchString(scanner.Text()); ok {
-				if died {
-					t.Fatal("assertion fail: more than one container died")
-				}
+			case matchDie.MatchString(scanner.Text()):
 				close(eventDie)
-				died = true
 			}
 		}
 
@@ -2033,13 +2032,24 @@ func TestBuildCancelationKillsSleep(t *testing.T) {
 	buildCmd := exec.Command(dockerBinary, "build", "-t", name, ".")
 	buildCmd.Dir = ctx.Dir
 
+	stdoutBuild, err := buildCmd.StdoutPipe()
 	err = buildCmd.Start()
 	if err != nil {
 		t.Fatalf("failed to run build: %s", err)
 	}
 
+	matchCID := regexp.MustCompile("Running in ")
+	scanner := bufio.NewScanner(stdoutBuild)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if ok := matchCID.MatchString(line); ok {
+			containerID <- line[len(line)-12:]
+			break
+		}
+	}
+
 	select {
-	case <-time.After(30 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("failed to observe build container start in timely fashion")
 	case <-eventStart:
 		// Proceeds from here when we see the container fly past in the
@@ -2061,7 +2071,7 @@ func TestBuildCancelationKillsSleep(t *testing.T) {
 	}
 
 	select {
-	case <-time.After(30 * time.Second):
+	case <-time.After(5 * time.Second):
 		// If we don't get here in a timely fashion, it wasn't killed.
 		t.Fatal("container cancel did not succeed")
 	case <-eventDie:
@@ -2152,7 +2162,6 @@ func TestBuildRm(t *testing.T) {
 	}
 
 	logDone("build - ensure --rm doesn't leave containers behind and that --rm=true is the default")
-	logDone("build - ensure --rm=false overrides the default")
 }
 
 func TestBuildWithVolumes(t *testing.T) {
@@ -3262,15 +3271,16 @@ CMD ["cat", "/foo"]`,
 	if out, _, err := runCommandWithOutput(buildCmd); err != nil {
 		t.Fatalf("build failed to complete: %v %v", out, err)
 	}
-	logDone(fmt.Sprintf("build - build an image with a context tar, compression: %v", compression))
 }
 
 func TestBuildContextTarGzip(t *testing.T) {
 	testContextTar(t, archive.Gzip)
+	logDone(fmt.Sprintf("build - build an image with a context tar, compression: %v", archive.Gzip))
 }
 
 func TestBuildContextTarNoCompression(t *testing.T) {
 	testContextTar(t, archive.Uncompressed)
+	logDone(fmt.Sprintf("build - build an image with a context tar, compression: %v", archive.Uncompressed))
 }
 
 func TestBuildNoContext(t *testing.T) {
@@ -4067,6 +4077,27 @@ ENV    abc \'foo\'
 RUN    [ "$abc" = "'foo'" ]
 ENV    abc \"foo\"
 RUN    [ "$abc" = '"foo"' ]
+
+ENV    abc=ABC
+RUN    [ "$abc" = "ABC" ]
+ENV    def=${abc:-DEF}
+RUN    [ "$def" = "ABC" ]
+ENV    def=${ccc:-DEF}
+RUN    [ "$def" = "DEF" ]
+ENV    def=${ccc:-${def}xx}
+RUN    [ "$def" = "DEFxx" ]
+ENV    def=${def:+ALT}
+RUN    [ "$def" = "ALT" ]
+ENV    def=${def:+${abc}:}
+RUN    [ "$def" = "ABC:" ]
+ENV    def=${ccc:-\$abc:}
+RUN    [ "$def" = '$abc:' ]
+ENV    def=${ccc:-\${abc}:}
+RUN    [ "$def" = '${abc:}' ]
+ENV    mypath=${mypath:+$mypath:}/home
+RUN    [ "$mypath" = '/home' ]
+ENV    mypath=${mypath:+$mypath:}/away
+RUN    [ "$mypath" = '/home:/away' ]
 
 ENV    e1=bar
 ENV    e2=$e1
@@ -5521,7 +5552,7 @@ func TestBuildResourceConstraintsAreUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(dockerBinary, "build", "--rm=false", "--memory=64m", "--memory-swap=-1", "--cpuset-cpus=1", "--cpu-shares=100", "-t", name, ".")
+	cmd := exec.Command(dockerBinary, "build", "--no-cache", "--rm=false", "--memory=64m", "--memory-swap=-1", "--cpuset-cpus=0", "--cpuset-mems=0", "--cpu-shares=100", "-t", name, ".")
 	cmd.Dir = ctx.Dir
 
 	out, _, err := runCommandWithOutput(cmd)
@@ -5533,12 +5564,13 @@ func TestBuildResourceConstraintsAreUsed(t *testing.T) {
 		t.Fatal(err, out)
 	}
 
-	cID := stripTrailingCharacters(out)
+	cID := strings.TrimSpace(out)
 
 	type hostConfig struct {
 		Memory     float64 // Use float64 here since the json decoder sees it that way
 		MemorySwap int
 		CpusetCpus string
+		CpusetMems string
 		CpuShares  int
 	}
 
@@ -5552,9 +5584,9 @@ func TestBuildResourceConstraintsAreUsed(t *testing.T) {
 		t.Fatal(err, cfg)
 	}
 	mem := int64(c1.Memory)
-	if mem != 67108864 || c1.MemorySwap != -1 || c1.CpusetCpus != "1" || c1.CpuShares != 100 {
-		t.Fatalf("resource constraints not set properly:\nMemory: %d, MemSwap: %d, CpusetCpus: %s, CpuShares: %d",
-			mem, c1.MemorySwap, c1.CpusetCpus, c1.CpuShares)
+	if mem != 67108864 || c1.MemorySwap != -1 || c1.CpusetCpus != "0" || c1.CpusetMems != "0" || c1.CpuShares != 100 {
+		t.Fatalf("resource constraints not set properly:\nMemory: %d, MemSwap: %d, CpusetCpus: %s, CpusetMems: %s, CpuShares: %d",
+			mem, c1.MemorySwap, c1.CpusetCpus, c1.CpusetMems, c1.CpuShares)
 	}
 
 	// Make sure constraints aren't saved to image
@@ -5571,9 +5603,9 @@ func TestBuildResourceConstraintsAreUsed(t *testing.T) {
 		t.Fatal(err, cfg)
 	}
 	mem = int64(c2.Memory)
-	if mem == 67108864 || c2.MemorySwap == -1 || c2.CpusetCpus == "1" || c2.CpuShares == 100 {
-		t.Fatalf("resource constraints leaked from build:\nMemory: %d, MemSwap: %d, CpusetCpus: %s, CpuShares: %d",
-			mem, c2.MemorySwap, c2.CpusetCpus, c2.CpuShares)
+	if mem == 67108864 || c2.MemorySwap == -1 || c2.CpusetCpus == "0" || c2.CpusetMems == "0" || c2.CpuShares == 100 {
+		t.Fatalf("resource constraints leaked from build:\nMemory: %d, MemSwap: %d, CpusetCpus: %s, CpusetMems: %s, CpuShares: %d",
+			mem, c2.MemorySwap, c2.CpusetCpus, c2.CpusetMems, c2.CpuShares)
 	}
 
 	logDone("build - resource constraints applied")

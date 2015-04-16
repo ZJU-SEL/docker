@@ -8,8 +8,9 @@ import (
 	"os"
 	"runtime"
 	"syscall"
+	"unsafe"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 )
 
 type DevmapperLogger interface {
@@ -226,7 +227,7 @@ func (t *Task) GetDriverVersion() (string, error) {
 	return res, nil
 }
 
-func (t *Task) GetNextTarget(next uintptr) (nextPtr uintptr, start uint64,
+func (t *Task) GetNextTarget(next unsafe.Pointer) (nextPtr unsafe.Pointer, start uint64,
 	length uint64, targetType string, params string) {
 
 	return DmGetNextTarget(t.unmanaged, next, &start, &length,
@@ -237,7 +238,7 @@ func (t *Task) GetNextTarget(next uintptr) (nextPtr uintptr, start uint64,
 func getLoopbackBackingFile(file *os.File) (uint64, uint64, error) {
 	loopInfo, err := ioctlLoopGetStatus64(file.Fd())
 	if err != nil {
-		log.Errorf("Error get loopback backing file: %s", err)
+		logrus.Errorf("Error get loopback backing file: %s", err)
 		return 0, 0, ErrGetLoopbackBackingFile
 	}
 	return loopInfo.loDevice, loopInfo.loInode, nil
@@ -245,7 +246,7 @@ func getLoopbackBackingFile(file *os.File) (uint64, uint64, error) {
 
 func LoopbackSetCapacity(file *os.File) error {
 	if err := ioctlLoopSetCapacity(file.Fd(), 0); err != nil {
-		log.Errorf("Error loopbackSetCapacity: %s", err)
+		logrus.Errorf("Error loopbackSetCapacity: %s", err)
 		return ErrLoopbackSetCapacity
 	}
 	return nil
@@ -283,9 +284,9 @@ func FindLoopDeviceFor(file *os.File) *os.File {
 	return nil
 }
 
-func UdevWait(cookie uint) error {
-	if res := DmUdevWait(cookie); res != 1 {
-		log.Debugf("Failed to wait on udev cookie %d", cookie)
+func UdevWait(cookie *uint) error {
+	if res := DmUdevWait(*cookie); res != 1 {
+		logrus.Debugf("Failed to wait on udev cookie %d", *cookie)
 		return ErrUdevWait
 	}
 	return nil
@@ -305,7 +306,7 @@ func LogInit(logger DevmapperLogger) {
 
 func SetDevDir(dir string) error {
 	if res := DmSetDevDir(dir); res != 1 {
-		log.Debugf("Error dm_set_dev_dir")
+		logrus.Debugf("Error dm_set_dev_dir")
 		return ErrSetDevDir
 	}
 	return nil
@@ -348,8 +349,6 @@ func CookieSupported() bool {
 
 // Useful helper for cleanup
 func RemoveDevice(name string) error {
-	log.Debugf("[devmapper] RemoveDevice START(%s)", name)
-	defer log.Debugf("[devmapper] RemoveDevice END(%s)", name)
 	task, err := TaskCreateNamed(DeviceRemove, name)
 	if task == nil {
 		return err
@@ -359,7 +358,7 @@ func RemoveDevice(name string) error {
 	if err := task.SetCookie(&cookie, 0); err != nil {
 		return fmt.Errorf("Can not set cookie: %s", err)
 	}
-	defer UdevWait(cookie)
+	defer UdevWait(&cookie)
 
 	dmSawBusy = false // reset before the task is run
 	if err = task.Run(); err != nil {
@@ -375,7 +374,7 @@ func RemoveDevice(name string) error {
 func GetBlockDeviceSize(file *os.File) (uint64, error) {
 	size, err := ioctlBlkGetSize64(file.Fd())
 	if err != nil {
-		log.Errorf("Error getblockdevicesize: %s", err)
+		logrus.Errorf("Error getblockdevicesize: %s", err)
 		return 0, ErrGetBlockSize
 	}
 	return uint64(size), nil
@@ -426,7 +425,7 @@ func CreatePool(poolName string, dataFile, metadataFile *os.File, poolBlockSize 
 	if err := task.SetCookie(&cookie, flags); err != nil {
 		return fmt.Errorf("Can't set cookie %s", err)
 	}
-	defer UdevWait(cookie)
+	defer UdevWait(&cookie)
 
 	if err := task.Run(); err != nil {
 		return fmt.Errorf("Error running DeviceCreate (CreatePool) %s", err)
@@ -494,25 +493,25 @@ func GetDriverVersion() (string, error) {
 func GetStatus(name string) (uint64, uint64, string, string, error) {
 	task, err := TaskCreateNamed(DeviceStatus, name)
 	if task == nil {
-		log.Debugf("GetStatus: Error TaskCreateNamed: %s", err)
+		logrus.Debugf("GetStatus: Error TaskCreateNamed: %s", err)
 		return 0, 0, "", "", err
 	}
 	if err := task.Run(); err != nil {
-		log.Debugf("GetStatus: Error Run: %s", err)
+		logrus.Debugf("GetStatus: Error Run: %s", err)
 		return 0, 0, "", "", err
 	}
 
 	devinfo, err := task.GetInfo()
 	if err != nil {
-		log.Debugf("GetStatus: Error GetInfo: %s", err)
+		logrus.Debugf("GetStatus: Error GetInfo: %s", err)
 		return 0, 0, "", "", err
 	}
 	if devinfo.Exists == 0 {
-		log.Debugf("GetStatus: Non existing device %s", name)
+		logrus.Debugf("GetStatus: Non existing device %s", name)
 		return 0, 0, "", "", fmt.Errorf("Non existing device %s", name)
 	}
 
-	_, start, length, targetType, params := task.GetNextTarget(0)
+	_, start, length, targetType, params := task.GetNextTarget(unsafe.Pointer(nil))
 	return start, length, targetType, params, nil
 }
 
@@ -557,7 +556,7 @@ func ResumeDevice(name string) error {
 	if err := task.SetCookie(&cookie, 0); err != nil {
 		return fmt.Errorf("Can't set cookie %s", err)
 	}
-	defer UdevWait(cookie)
+	defer UdevWait(&cookie)
 
 	if err := task.Run(); err != nil {
 		return fmt.Errorf("Error running DeviceResume %s", err)
@@ -567,7 +566,7 @@ func ResumeDevice(name string) error {
 }
 
 func CreateDevice(poolName string, deviceId int) error {
-	log.Debugf("[devmapper] CreateDevice(poolName=%v, deviceId=%v)", poolName, deviceId)
+	logrus.Debugf("[devmapper] CreateDevice(poolName=%v, deviceId=%v)", poolName, deviceId)
 	task, err := TaskCreateNamed(DeviceTargetMsg, poolName)
 	if task == nil {
 		return err
@@ -633,7 +632,7 @@ func ActivateDevice(poolName string, name string, deviceId int, size uint64) err
 		return fmt.Errorf("Can't set cookie %s", err)
 	}
 
-	defer UdevWait(cookie)
+	defer UdevWait(&cookie)
 
 	if err := task.Run(); err != nil {
 		return fmt.Errorf("Error running DeviceCreate (ActivateDevice) %s", err)

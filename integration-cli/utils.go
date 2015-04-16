@@ -44,12 +44,14 @@ func processExitCode(err error) (exitCode int) {
 
 func IsKilled(err error) bool {
 	if exitErr, ok := err.(*exec.ExitError); ok {
-		sys := exitErr.ProcessState.Sys()
-		status, ok := sys.(syscall.WaitStatus)
+		status, ok := exitErr.Sys().(syscall.WaitStatus)
 		if !ok {
 			return false
 		}
-		return status.Signaled() && status.Signal() == os.Kill
+		// status.ExitStatus() is required on Windows because it does not
+		// implement Signal() nor Signaled(). Just check it had a bad exit
+		// status could mean it was killed (and in tests we do kill)
+		return (status.Signaled() && status.Signal() == os.Kill) || status.ExitStatus() != 0
 	}
 	return false
 }
@@ -166,11 +168,7 @@ func runCommandPipelineWithOutput(cmds ...*exec.Cmd) (output string, exitCode in
 }
 
 func logDone(message string) {
-	fmt.Printf("[PASSED]: %s\n", message)
-}
-
-func stripTrailingCharacters(target string) string {
-	return strings.TrimSpace(target)
+	fmt.Printf("[PASSED]: %.69s\n", message)
 }
 
 func unmarshalJSON(data []byte, result interface{}) error {
@@ -215,7 +213,16 @@ func waitInspect(name, expr, expected string, timeout int) error {
 		cmd := exec.Command(dockerBinary, "inspect", "-f", expr, name)
 		out, _, err := runCommandWithOutput(cmd)
 		if err != nil {
-			return fmt.Errorf("error executing docker inspect: %v", err)
+			if !strings.Contains(out, "No such") {
+				return fmt.Errorf("error executing docker inspect: %v\n%s", err, out)
+			}
+			select {
+			case <-after:
+				return err
+			default:
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
 		}
 
 		out = strings.TrimSpace(out)

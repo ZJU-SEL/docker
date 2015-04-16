@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"net/url"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/engine"
 	"github.com/docker/docker/pkg/archive"
+	"github.com/docker/docker/pkg/httputils"
 	"github.com/docker/docker/pkg/progressreader"
 	"github.com/docker/docker/pkg/streamformatter"
 	"github.com/docker/docker/runconfig"
@@ -47,7 +47,7 @@ func (s *TagStore) CmdImport(job *engine.Job) error {
 			u.Path = ""
 		}
 		job.Stdout.Write(sf.FormatStatus("", "Downloading from %s", u))
-		resp, err = utils.Download(u.String())
+		resp, err = httputils.Download(u.String())
 		if err != nil {
 			return err
 		}
@@ -92,8 +92,7 @@ func (s *TagStore) CmdImport(job *engine.Job) error {
 	if tag != "" {
 		logID = utils.ImageReference(logID, tag)
 	}
-	if err = job.Eng.Job("log", "import", logID, "").Run(); err != nil {
-		log.Errorf("Error logging event 'import' for %s: %s", logID, err)
-	}
+
+	s.eventsService.Log("import", logID, "")
 	return nil
 }

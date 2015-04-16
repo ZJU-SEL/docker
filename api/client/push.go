@@ -1,23 +1,22 @@
 package client
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/url"
-	"strings"
 
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/parsers"
 	"github.com/docker/docker/registry"
-	"github.com/docker/docker/utils"
 )
 
+// CmdPush pushes an image or repository to the registry.
+//
+// Usage: docker push NAME[:TAG]
 func (cli *DockerCli) CmdPush(args ...string) error {
 	cmd := cli.Subcmd("push", "NAME[:TAG]", "Push an image or a repository to the registry", true)
 	cmd.Require(flag.Exact, 1)
 
-	utils.ParseFlags(cmd, args, true)
+	cmd.ParseFlags(args, true)
 
 	name := cmd.Arg(0)
 
@@ -47,30 +46,6 @@ func (cli *DockerCli) CmdPush(args ...string) error {
 	v := url.Values{}
 	v.Set("tag", tag)
 
-	push := func(authConfig registry.AuthConfig) error {
-		buf, err := json.Marshal(authConfig)
-		if err != nil {
-			return err
-		}
-		registryAuthHeader := []string{
-			base64.URLEncoding.EncodeToString(buf),
-		}
-
-		return cli.stream("POST", "/images/"+remote+"/push?"+v.Encode(), nil, cli.out, map[string][]string{
-			"X-Registry-Auth": registryAuthHeader,
-		})
-	}
-
-	if err := push(authConfig); err != nil {
-		if strings.Contains(err.Error(), "Status 401") {
-			fmt.Fprintln(cli.out, "\nPlease login prior to push:")
-			if err := cli.CmdLogin(repoInfo.Index.GetAuthConfigKey()); err != nil {
-				return err
-			}
-			authConfig := cli.configFile.ResolveAuthConfig(repoInfo.Index)
-			return push(authConfig)
-		}
-		return err
-	}
-	return nil
+	_, _, err = cli.clientRequestAttemptLogin("POST", "/images/"+remote+"/push?"+v.Encode(), nil, cli.out, repoInfo.Index, "push")
+	return err
 }

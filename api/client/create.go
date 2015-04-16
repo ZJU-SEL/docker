@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/graph"
@@ -92,9 +93,9 @@ func (cli *DockerCli) createContainer(config *runconfig.Config, hostConfig *runc
 	}
 
 	//create the container
-	stream, statusCode, err := cli.call("POST", "/containers/create?"+containerValues.Encode(), mergedConfig, false)
+	stream, statusCode, err := cli.call("POST", "/containers/create?"+containerValues.Encode(), mergedConfig, nil)
 	//if image not found try to pull it
-	if statusCode == 404 {
+	if statusCode == 404 && strings.Contains(err.Error(), config.Image) {
 		repo, tag := parsers.ParseRepositoryTag(config.Image)
 		if tag == "" {
 			tag = graph.DEFAULTTAG
@@ -106,7 +107,7 @@ func (cli *DockerCli) createContainer(config *runconfig.Config, hostConfig *runc
 			return nil, err
 		}
 		// Retry
-		if stream, _, err = cli.call("POST", "/containers/create?"+containerValues.Encode(), mergedConfig, false); err != nil {
+		if stream, _, err = cli.call("POST", "/containers/create?"+containerValues.Encode(), mergedConfig, nil); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
@@ -128,6 +129,9 @@ func (cli *DockerCli) createContainer(config *runconfig.Config, hostConfig *runc
 	return &response, nil
 }
 
+// CmdCreate creates a new container from a given image.
+//
+// Usage: docker create [OPTIONS] IMAGE [COMMAND] [ARG...]
 func (cli *DockerCli) CmdCreate(args ...string) error {
 	cmd := cli.Subcmd("create", "IMAGE [COMMAND] [ARG...]", "Create a new container", true)
 
@@ -138,7 +142,7 @@ func (cli *DockerCli) CmdCreate(args ...string) error {
 
 	config, hostConfig, cmd, err := runconfig.Parse(cmd, args)
 	if err != nil {
-		utils.ReportError(cmd, err.Error(), true)
+		cmd.ReportError(err.Error(), true)
 	}
 	if config.Image == "" {
 		cmd.Usage()

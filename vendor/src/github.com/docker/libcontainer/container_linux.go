@@ -140,7 +140,9 @@ func (c *linuxContainer) commandTemplate(p *Process, childPipe *os.File) (*exec.
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.ExtraFiles = []*os.File{childPipe}
-	cmd.SysProcAttr.Pdeathsig = syscall.SIGKILL
+	// NOTE: when running a container with no PID namespace and the parent process spawning the container is
+	// PID1 the pdeathsig is being delivered to the container's init process by the kernel for some reason
+	// even with the parent still running.
 	if c.config.ParentDeathSignal > 0 {
 		cmd.SysProcAttr.Pdeathsig = syscall.Signal(c.config.ParentDeathSignal)
 	}
@@ -193,12 +195,13 @@ func (c *linuxContainer) newSetnsProcess(p *Process, cmd *exec.Cmd, parentPipe, 
 
 func (c *linuxContainer) newInitConfig(process *Process) *initConfig {
 	return &initConfig{
-		Config:  c.config,
-		Args:    process.Args,
-		Env:     process.Env,
-		User:    process.User,
-		Cwd:     process.Cwd,
-		Console: process.consolePath,
+		Config:       c.config,
+		Args:         process.Args,
+		Env:          process.Env,
+		User:         process.User,
+		Cwd:          process.Cwd,
+		Console:      process.consolePath,
+		Capabilities: process.Capabilities,
 	}
 }
 
@@ -302,6 +305,12 @@ func (c *linuxContainer) currentState() (*State, error) {
 	}
 	for _, ns := range c.config.Namespaces {
 		state.NamespacePaths[ns.Type] = ns.GetPath(c.initProcess.pid())
+	}
+	for _, nsType := range configs.NamespaceTypes() {
+		if _, ok := state.NamespacePaths[nsType]; !ok {
+			ns := configs.Namespace{Type: nsType}
+			state.NamespacePaths[ns.Type] = ns.GetPath(c.initProcess.pid())
+		}
 	}
 	return state, nil
 }

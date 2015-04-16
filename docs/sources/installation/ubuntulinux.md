@@ -94,7 +94,7 @@ prerequisite installed, Docker's installation process adds it.
 
 ##Installing Docker on Ubuntu
 
-Make sure you have intalled the prerequisites for your Ubuntu version. Then,
+Make sure you have installed the prerequisites for your Ubuntu version. Then,
 install Docker using the following:
 
 1. Log into your Ubuntu installation as a user with `sudo` privileges.
@@ -114,6 +114,12 @@ install Docker using the following:
 
 	 The system prompts you for your `sudo` password. Then, it downloads and
 	 installs Docker and its dependencies.
+>**Note**: If your company is behind a filtering proxy, you may find that the
+>`apt-key`
+>command fails for the Docker repo during installation. To work around this,
+>add the key directly using the following:
+>
+>       $ wget -qO- https://get.docker.com/gpg | sudo apt-key add -
 
 4. Verify `docker` is installed correctly.
 
@@ -247,7 +253,7 @@ The warning occurs because Docker containers can't use the local DNS nameserver.
 Instead, Docker defaults to using an external nameserver.
 
 To avoid this warning, you can specify a DNS server for use by Docker
-containers. Or, you can disable `dnsmasq` in NetworkManager. Though, disabiling
+containers. Or, you can disable `dnsmasq` in NetworkManager. Though, disabling
 `dnsmasq` might make DNS resolution slower on some networks.
 
 To specify a DNS server for use by Docker:
@@ -283,7 +289,7 @@ To specify a DNS server for use by Docker:
 **Or, as an alternative to the previous procedure,** disable `dnsmasq` in
 NetworkManager (this might slow your network).
 
-1. Open the `/etc/default/docker` file for editing.
+1. Open the `/etc/NetworkManager/NetworkManager.conf` file for editing.
 
 		$ sudo nano /etc/NetworkManager/NetworkManager.conf
 
@@ -302,5 +308,5 @@ NetworkManager (this might slow your network).
 
 To install the latest version of Docker, use the standard `-N` flag with `wget`:
 
-	$ wget -N https://get.docker.com/ | sh
+	$ wget -N -qO- https://get.docker.com/ | sh
 

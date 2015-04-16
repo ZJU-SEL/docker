@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/engine"
 	"github.com/docker/docker/image"
 )
@@ -17,8 +17,6 @@ func (s *TagStore) Install(eng *engine.Engine) error {
 		"image_inspect":  s.CmdLookup,
 		"image_tarlayer": s.CmdTarLayer,
 		"image_export":   s.CmdImageExport,
-		"history":        s.CmdHistory,
-		"images":         s.CmdImages,
 		"viz":            s.CmdViz,
 		"load":           s.CmdLoad,
 		"import":         s.CmdImport,
@@ -68,7 +66,7 @@ func (s *TagStore) CmdSet(job *engine.Job) error {
 	}
 	// We have to pass an *image.Image object, even though it will be completely
 	// ignored in favor of the redundant json data.
-	// FIXME: the current prototype of Graph.Register is stupid and redundant.
+	// FIXME: the current prototype of Graph.Register is redundant.
 	img, err := image.NewImgJSON(imgJSON)
 	if err != nil {
 		return err
@@ -174,7 +172,7 @@ func (s *TagStore) CmdTarLayer(job *engine.Job) error {
 		if err != nil {
 			return err
 		}
-		log.Debugf("rendered layer for %s of [%d] size", image.ID, written)
+		logrus.Debugf("rendered layer for %s of [%d] size", image.ID, written)
 		return nil
 	}
 	return fmt.Errorf("No such image: %s", name)

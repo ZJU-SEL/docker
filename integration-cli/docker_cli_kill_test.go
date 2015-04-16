@@ -7,13 +7,13 @@ import (
 )
 
 func TestKillContainer(t *testing.T) {
-	runCmd := exec.Command(dockerBinary, "run", "-d", "busybox", "sh", "-c", "sleep 10")
+	runCmd := exec.Command(dockerBinary, "run", "-d", "busybox", "top")
 	out, _, err := runCommandWithOutput(runCmd)
 	if err != nil {
 		t.Fatal(out, err)
 	}
 
-	cleanedContainerID := stripTrailingCharacters(out)
+	cleanedContainerID := strings.TrimSpace(out)
 
 	inspectCmd := exec.Command(dockerBinary, "inspect", cleanedContainerID)
 	if out, _, err = runCommandWithOutput(inspectCmd); err != nil {
@@ -37,17 +37,17 @@ func TestKillContainer(t *testing.T) {
 
 	deleteContainer(cleanedContainerID)
 
-	logDone("kill - kill container running sleep 10")
+	logDone("kill - kill container running top")
 }
 
 func TestKillDifferentUserContainer(t *testing.T) {
-	runCmd := exec.Command(dockerBinary, "run", "-u", "daemon", "-d", "busybox", "sh", "-c", "sleep 10")
+	runCmd := exec.Command(dockerBinary, "run", "-u", "daemon", "-d", "busybox", "top")
 	out, _, err := runCommandWithOutput(runCmd)
 	if err != nil {
 		t.Fatal(out, err)
 	}
 
-	cleanedContainerID := stripTrailingCharacters(out)
+	cleanedContainerID := strings.TrimSpace(out)
 
 	inspectCmd := exec.Command(dockerBinary, "inspect", cleanedContainerID)
 	if out, _, err = runCommandWithOutput(inspectCmd); err != nil {
@@ -71,5 +71,5 @@ func TestKillDifferentUserContainer(t *testing.T) {
 
 	deleteContainer(cleanedContainerID)
 
-	logDone("kill - kill container running sleep 10 from a different user")
+	logDone("kill - kill container running top from a different user")
 }

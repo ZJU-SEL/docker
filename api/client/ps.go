@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -9,15 +10,18 @@ import (
 	"time"
 
 	"github.com/docker/docker/api"
-	"github.com/docker/docker/engine"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/opts"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/parsers/filters"
 	"github.com/docker/docker/pkg/stringid"
+	"github.com/docker/docker/pkg/stringutils"
 	"github.com/docker/docker/pkg/units"
-	"github.com/docker/docker/utils"
 )
 
+// CmdPs outputs a list of Docker containers.
+//
+// Usage: docker ps [OPTIONS]
 func (cli *DockerCli) CmdPs(args ...string) error {
 	var (
 		err error
@@ -40,7 +44,7 @@ func (cli *DockerCli) CmdPs(args ...string) error {
 
 	cmd.Var(&flFilter, []string{"f", "-filter"}, "Filter output based on conditions provided")
 
-	utils.ParseFlags(cmd, args, true)
+	cmd.ParseFlags(args, true)
 	if *last == -1 && *nLatest {
 		*last = 1
 	}
@@ -74,21 +78,22 @@ func (cli *DockerCli) CmdPs(args ...string) error {
 	}
 
 	if len(psFilterArgs) > 0 {
-		filterJson, err := filters.ToParam(psFilterArgs)
+		filterJSON, err := filters.ToParam(psFilterArgs)
 		if err != nil {
 			return err
 		}
 
-		v.Set("filters", filterJson)
+		v.Set("filters", filterJSON)
 	}
 
-	body, _, err := readBody(cli.call("GET", "/containers/json?"+v.Encode(), nil, false))
+	rdr, _, err := cli.call("GET", "/containers/json?"+v.Encode(), nil, nil)
 	if err != nil {
 		return err
 	}
 
-	outs := engine.NewTable("Created", 0)
-	if _, err := outs.ReadListFrom(body); err != nil {
+	containers := []types.Container{}
+	err = json.NewDecoder(rdr).Decode(&containers)
+	if err != nil {
 		return err
 	}
 
@@ -111,54 +116,50 @@ func (cli *DockerCli) CmdPs(args ...string) error {
 		return ss
 	}
 
-	for _, out := range outs.Data {
-		outID := out.Get("Id")
+	for _, container := range containers {
+		ID := container.ID
 
 		if !*noTrunc {
-			outID = stringid.TruncateID(outID)
+			ID = stringid.TruncateID(ID)
 		}
 
 		if *quiet {
-			fmt.Fprintln(w, outID)
+			fmt.Fprintln(w, ID)
 
 			continue
 		}
 
 		var (
-			outNames   = stripNamePrefix(out.GetList("Names"))
-			outCommand = strconv.Quote(out.Get("Command"))
-			ports      = engine.NewTable("", 0)
+			names   = stripNamePrefix(container.Names)
+			command = strconv.Quote(container.Command)
 		)
 
 		if !*noTrunc {
-			outCommand = utils.Trunc(outCommand, 20)
+			command = stringutils.Truncate(command, 20)
 
 			// only display the default name for the container with notrunc is passed
-			for _, name := range outNames {
+			for _, name := range names {
 				if len(strings.Split(name, "/")) == 1 {
-					outNames = []string{name}
-
+					names = []string{name}
 					break
 				}
 			}
 		}
 
-		ports.ReadListFrom([]byte(out.Get("Ports")))
-
-		image := out.Get("Image")
+		image := container.Image
 		if image == "" {
 			image = "<no image>"
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s ago\t%s\t%s\t%s\t", outID, image, outCommand,
-			units.HumanDuration(time.Now().UTC().Sub(time.Unix(out.GetInt64("Created"), 0))),
-			out.Get("Status"), api.DisplayablePorts(ports), strings.Join(outNames, ","))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s ago\t%s\t%s\t%s\t", ID, image, command,
+			units.HumanDuration(time.Now().UTC().Sub(time.Unix(int64(container.Created), 0))),
+			container.Status, api.DisplayablePorts(container.Ports), strings.Join(names, ","))
 
 		if *size {
-			if out.GetInt("SizeRootFs") > 0 {
-				fmt.Fprintf(w, "%s (virtual %s)\n", units.HumanSize(float64(out.GetInt64("SizeRw"))), units.HumanSize(float64(out.GetInt64("SizeRootFs"))))
+			if container.SizeRootFs > 0 {
+				fmt.Fprintf(w, "%s (virtual %s)\n", units.HumanSize(float64(container.SizeRw)), units.HumanSize(float64(container.SizeRootFs)))
 			} else {
-				fmt.Fprintf(w, "%s\n", units.HumanSize(float64(out.GetInt64("SizeRw"))))
+				fmt.Fprintf(w, "%s\n", units.HumanSize(float64(container.SizeRw)))
 			}
 
 			continue

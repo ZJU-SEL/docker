@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 )
 
 type Action string
@@ -260,7 +260,7 @@ func Exists(table Table, chain string, rule ...string) bool {
 
 	// parse "iptables -S" for the rule (this checks rules in a specific chain
 	// in a specific table)
-	rule_string := strings.Join(rule, " ")
+	ruleString := strings.Join(rule, " ")
 	existingRules, _ := exec.Command("iptables", "-t", string(table), "-S", chain).Output()
 
 	// regex to replace ips in rule
@@ -269,7 +269,7 @@ func Exists(table Table, chain string, rule ...string) bool {
 
 	return strings.Contains(
 		re.ReplaceAllString(string(existingRules), "?"),
-		re.ReplaceAllString(rule_string, "?"),
+		re.ReplaceAllString(ruleString, "?"),
 	)
 }
 
@@ -283,7 +283,7 @@ func Raw(args ...string) ([]byte, error) {
 		args = append([]string{"--wait"}, args...)
 	}
 
-	log.Debugf("%s, %v", iptablesPath, args)
+	logrus.Debugf("%s, %v", iptablesPath, args)
 
 	output, err := exec.Command(iptablesPath, args...).CombinedOutput()
 	if err != nil {

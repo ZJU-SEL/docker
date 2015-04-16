@@ -1,31 +1,50 @@
 // +build windows
-
 package server
 
 import (
-	"fmt"
+	"errors"
+	"net"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/engine"
 )
 
 // NewServer sets up the required Server and does protocol specific checking.
 func NewServer(proto, addr string, job *engine.Job) (Server, error) {
-	// Basic error and sanity checking
+	var (
+		err error
+		l   net.Listener
+		r   = createRouter(
+			job.Eng,
+			job.GetenvBool("Logging"),
+			job.GetenvBool("EnableCors"),
+			job.Getenv("CorsHeaders"),
+			job.Getenv("Version"),
+		)
+	)
 	switch proto {
 	case "tcp":
-		return setupTcpHttp(addr, job)
+		if !job.GetenvBool("TlsVerify") {
+			logrus.Infof("/!\\ DON'T BIND ON ANY IP ADDRESS WITHOUT setting -tlsverify IF YOU DON'T KNOW WHAT YOU'RE DOING /!\\")
+		}
+		if l, err = NewTcpSocket(addr, tlsConfigFromJob(job)); err != nil {
+			return nil, err
+		}
+		if err := allocateDaemonPort(addr); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, errors.New("Invalid protocol format. Windows only supports tcp.")
 	}
 }
 
 // Called through eng.Job("acceptconnections")
-func AcceptConnections(job *engine.Job) engine.Status {
-
+func AcceptConnections(job *engine.Job) error {
 	// close the lock so the listeners start accepting connections
-	if activationLock != nil {
+	select {
+	case <-activationLock:
+	default:
 		close(activationLock)
 	}
-
-	return engine.StatusOK
+	return nil
 }

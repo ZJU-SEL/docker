@@ -13,12 +13,11 @@ import (
 	"github.com/docker/docker/api/types"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/units"
-	"github.com/docker/docker/utils"
 )
 
 type containerStats struct {
 	Name             string
-	CpuPercentage    float64
+	CPUPercentage    float64
 	Memory           float64
 	MemoryLimit      float64
 	MemoryPercentage float64
@@ -29,14 +28,14 @@ type containerStats struct {
 }
 
 func (s *containerStats) Collect(cli *DockerCli) {
-	stream, _, err := cli.call("GET", "/containers/"+s.Name+"/stats", nil, false)
+	stream, _, err := cli.call("GET", "/containers/"+s.Name+"/stats", nil, nil)
 	if err != nil {
 		s.err = err
 		return
 	}
 	defer stream.Close()
 	var (
-		previousCpu    uint64
+		previousCPU    uint64
 		previousSystem uint64
 		start          = true
 		dec            = json.NewDecoder(stream)
@@ -54,18 +53,18 @@ func (s *containerStats) Collect(cli *DockerCli) {
 				cpuPercent = 0.0
 			)
 			if !start {
-				cpuPercent = calculateCpuPercent(previousCpu, previousSystem, v)
+				cpuPercent = calculateCPUPercent(previousCPU, previousSystem, v)
 			}
 			start = false
 			s.mu.Lock()
-			s.CpuPercentage = cpuPercent
+			s.CPUPercentage = cpuPercent
 			s.Memory = float64(v.MemoryStats.Usage)
 			s.MemoryLimit = float64(v.MemoryStats.Limit)
 			s.MemoryPercentage = memPercent
 			s.NetworkRx = float64(v.Network.RxBytes)
 			s.NetworkTx = float64(v.Network.TxBytes)
 			s.mu.Unlock()
-			previousCpu = v.CpuStats.CpuUsage.TotalUsage
+			previousCPU = v.CpuStats.CpuUsage.TotalUsage
 			previousSystem = v.CpuStats.SystemUsage
 			u <- nil
 		}
@@ -76,7 +75,7 @@ func (s *containerStats) Collect(cli *DockerCli) {
 			// zero out the values if we have not received an update within
 			// the specified duration.
 			s.mu.Lock()
-			s.CpuPercentage = 0
+			s.CPUPercentage = 0
 			s.Memory = 0
 			s.MemoryPercentage = 0
 			s.mu.Unlock()
@@ -99,17 +98,22 @@ func (s *containerStats) Display(w io.Writer) error {
 	}
 	fmt.Fprintf(w, "%s\t%.2f%%\t%s/%s\t%.2f%%\t%s/%s\n",
 		s.Name,
-		s.CpuPercentage,
-		units.BytesSize(s.Memory), units.BytesSize(s.MemoryLimit),
+		s.CPUPercentage,
+		units.HumanSize(s.Memory), units.HumanSize(s.MemoryLimit),
 		s.MemoryPercentage,
-		units.BytesSize(s.NetworkRx), units.BytesSize(s.NetworkTx))
+		units.HumanSize(s.NetworkRx), units.HumanSize(s.NetworkTx))
 	return nil
 }
 
+// CmdStats displays a live stream of resource usage statistics for one or more containers.
+//
+// This shows real-time information on CPU usage, memory usage, and network I/O.
+//
+// Usage: docker stats CONTAINER [CONTAINER...]
 func (cli *DockerCli) CmdStats(args ...string) error {
 	cmd := cli.Subcmd("stats", "CONTAINER [CONTAINER...]", "Display a live stream of one or more containers' resource usage statistics", true)
 	cmd.Require(flag.Min, 1)
-	utils.ParseFlags(cmd, args, true)
+	cmd.ParseFlags(args, true)
 
 	names := cmd.Args()
 	sort.Strings(names)
@@ -118,9 +122,9 @@ func (cli *DockerCli) CmdStats(args ...string) error {
 		w      = tabwriter.NewWriter(cli.out, 20, 1, 3, ' ', 0)
 	)
 	printHeader := func() {
-		fmt.Fprint(cli.out, "\033[2J")
-		fmt.Fprint(cli.out, "\033[H")
-		fmt.Fprintln(w, "CONTAINER\tCPU %\tMEM USAGE/LIMIT\tMEM %\tNET I/O")
+		io.WriteString(cli.out, "\033[2J")
+		io.WriteString(cli.out, "\033[H")
+		io.WriteString(w, "CONTAINER\tCPU %\tMEM USAGE/LIMIT\tMEM %\tNET I/O\n")
 	}
 	for _, n := range names {
 		s := &containerStats{Name: n}
@@ -161,11 +165,11 @@ func (cli *DockerCli) CmdStats(args ...string) error {
 	return nil
 }
 
-func calculateCpuPercent(previousCpu, previousSystem uint64, v *types.Stats) float64 {
+func calculateCPUPercent(previousCPU, previousSystem uint64, v *types.Stats) float64 {
 	var (
 		cpuPercent = 0.0
 		// calculate the change for the cpu usage of the container in between readings
-		cpuDelta = float64(v.CpuStats.CpuUsage.TotalUsage - previousCpu)
+		cpuDelta = float64(v.CpuStats.CpuUsage.TotalUsage - previousCPU)
 		// calculate the change for the entire system between readings
 		systemDelta = float64(v.CpuStats.SystemUsage - previousSystem)
 	)

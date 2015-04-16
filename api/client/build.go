@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api"
 	"github.com/docker/docker/graph"
 	"github.com/docker/docker/pkg/archive"
@@ -38,6 +38,11 @@ const (
 	tarHeaderSize = 512
 )
 
+// CmdBuild builds a new image from the source code at a given path.
+//
+// If '-' is provided instead of a path or URL, Docker will build an image from either a Dockerfile or tar archive read from STDIN.
+//
+// Usage: docker build [OPTIONS] PATH | URL | -
 func (cli *DockerCli) CmdBuild(args ...string) error {
 	cmd := cli.Subcmd("build", "PATH | URL | -", "Build a new image from the source code at PATH", true)
 	tag := cmd.String([]string{"t", "-tag"}, "", "Repository name (and optionally a tag) for the image")
@@ -49,12 +54,12 @@ func (cli *DockerCli) CmdBuild(args ...string) error {
 	dockerfileName := cmd.String([]string{"f", "-file"}, "", "Name of the Dockerfile (Default is 'PATH/Dockerfile')")
 	flMemoryString := cmd.String([]string{"m", "-memory"}, "", "Memory limit")
 	flMemorySwap := cmd.String([]string{"-memory-swap"}, "", "Total memory (memory + swap), '-1' to disable swap")
-	flCpuShares := cmd.Int64([]string{"c", "-cpu-shares"}, 0, "CPU shares (relative weight)")
-	flCpuSetCpus := cmd.String([]string{"-cpuset-cpus"}, "", "CPUs in which to allow execution (0-3, 0,1)")
+	flCPUShares := cmd.Int64([]string{"c", "-cpu-shares"}, 0, "CPU shares (relative weight)")
+	flCPUSetCpus := cmd.String([]string{"-cpuset-cpus"}, "", "CPUs in which to allow execution (0-3, 0,1)")
+	flCPUSetMems := cmd.String([]string{"-cpuset-mems"}, "", "MEMs in which to allow execution (0-3, 0,1)")
 
 	cmd.Require(flag.Exact, 1)
-
-	utils.ParseFlags(cmd, args, true)
+	cmd.ParseFlags(args, true)
 
 	var (
 		context  archive.Archive
@@ -151,7 +156,7 @@ func (cli *DockerCli) CmdBuild(args ...string) error {
 		// And canonicalize dockerfile name to a platform-independent one
 		*dockerfileName, err = archive.CanonicalTarNameForPath(*dockerfileName)
 		if err != nil {
-			return fmt.Errorf("Cannot canonicalize dockerfile path %s: %v", dockerfileName, err)
+			return fmt.Errorf("Cannot canonicalize dockerfile path %s: %v", *dockerfileName, err)
 		}
 
 		if _, err = os.Lstat(filename); os.IsNotExist(err) {
@@ -193,7 +198,7 @@ func (cli *DockerCli) CmdBuild(args ...string) error {
 	// windows: show error message about modified file permissions
 	// FIXME: this is not a valid warning when the daemon is running windows. should be removed once docker engine for windows can build.
 	if runtime.GOOS == "windows" {
-		log.Warn(`SECURITY WARNING: You are building a Docker image from Windows against a Linux Docker host. All files and directories added to build context will have '-rwxr-xr-x' permissions. It is recommended to double check and reset permissions for sensitive files and directories.`)
+		logrus.Warn(`SECURITY WARNING: You are building a Docker image from Windows against a Linux Docker host. All files and directories added to build context will have '-rwxr-xr-x' permissions. It is recommended to double check and reset permissions for sensitive files and directories.`)
 	}
 
 	var body io.Reader
@@ -273,8 +278,9 @@ func (cli *DockerCli) CmdBuild(args ...string) error {
 		v.Set("pull", "1")
 	}
 
-	v.Set("cpusetcpus", *flCpuSetCpus)
-	v.Set("cpushares", strconv.FormatInt(*flCpuShares, 10))
+	v.Set("cpusetcpus", *flCPUSetCpus)
+	v.Set("cpusetmems", *flCPUSetMems)
+	v.Set("cpushares", strconv.FormatInt(*flCPUShares, 10))
 	v.Set("memory", strconv.FormatInt(memory, 10))
 	v.Set("memswap", strconv.FormatInt(memorySwap, 10))
 
@@ -298,7 +304,7 @@ func (cli *DockerCli) CmdBuild(args ...string) error {
 		if jerr.Code == 0 {
 			jerr.Code = 1
 		}
-		return &utils.StatusError{Status: jerr.Message, StatusCode: jerr.Code}
+		return StatusError{Status: jerr.Message, StatusCode: jerr.Code}
 	}
 	return err
 }

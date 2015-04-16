@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	log "github.com/Sirupsen/logrus"
-	"github.com/docker/docker/engine"
 	"github.com/docker/docker/graph"
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/pkg/parsers"
@@ -13,66 +11,54 @@ import (
 	"github.com/docker/libcontainer/label"
 )
 
-func (daemon *Daemon) ContainerCreate(job *engine.Job) error {
-	var name string
-	if len(job.Args) == 1 {
-		name = job.Args[0]
-	} else if len(job.Args) > 1 {
-		return fmt.Errorf("Usage: %s", job.Name)
-	}
-
-	config := runconfig.ContainerConfigFromJob(job)
-	hostConfig := runconfig.ContainerHostConfigFromJob(job)
+func (daemon *Daemon) ContainerCreate(name string, config *runconfig.Config, hostConfig *runconfig.HostConfig) (string, []string, error) {
+	var warnings []string
 
 	//validate volume path before creating container
 	if err := validateVolumePath(config, hostConfig); err != nil {
-		return err
+		return "", warnings, err
 	}
 
-	if len(hostConfig.LxcConf) > 0 && !strings.Contains(daemon.ExecutionDriver().Name(), "lxc") {
-		return fmt.Errorf("Cannot use --lxc-conf with execdriver: %s", daemon.ExecutionDriver().Name())
+	if hostConfig.LxcConf.Len() > 0 && !strings.Contains(daemon.ExecutionDriver().Name(), "lxc") {
+		return "", warnings, fmt.Errorf("Cannot use --lxc-conf with execdriver: %s", daemon.ExecutionDriver().Name())
 	}
 	if hostConfig.Memory != 0 && hostConfig.Memory < 4194304 {
-		return fmt.Errorf("Minimum memory limit allowed is 4MB")
+		return "", warnings, fmt.Errorf("Minimum memory limit allowed is 4MB")
 	}
 	if hostConfig.Memory > 0 && !daemon.SystemConfig().MemoryLimit {
-		log.Printf("Your kernel does not support memory limit capabilities. Limitation discarded.\n")
+		warnings = append(warnings, "Your kernel does not support memory limit capabilities. Limitation discarded.\n")
 		hostConfig.Memory = 0
 	}
 	if hostConfig.Memory > 0 && hostConfig.MemorySwap != -1 && !daemon.SystemConfig().SwapLimit {
-		log.Printf("Your kernel does not support swap limit capabilities. Limitation discarded.\n")
+		warnings = append(warnings, "Your kernel does not support swap limit capabilities. Limitation discarded.\n")
 		hostConfig.MemorySwap = -1
 	}
 	if hostConfig.Memory > 0 && hostConfig.MemorySwap > 0 && hostConfig.MemorySwap < hostConfig.Memory {
-		return fmt.Errorf("Minimum memoryswap limit should be larger than memory limit, see usage.\n")
+		return "", warnings, fmt.Errorf("Minimum memoryswap limit should be larger than memory limit, see usage.\n")
 	}
 	if hostConfig.Memory == 0 && hostConfig.MemorySwap > 0 {
-		return fmt.Errorf("You should always set the Memory limit when using Memoryswap limit, see usage.\n")
+		return "", warnings, fmt.Errorf("You should always set the Memory limit when using Memoryswap limit, see usage.\n")
 	}
 
 	container, buildWarnings, err := daemon.Create(config, hostConfig, name)
 	if err != nil {
-		if daemon.Graph().IsNotExist(err) {
+		if daemon.Graph().IsNotExist(err, config.Image) {
 			_, tag := parsers.ParseRepositoryTag(config.Image)
 			if tag == "" {
 				tag = graph.DEFAULTTAG
 			}
-			return fmt.Errorf("No such image: %s (tag: %s)", config.Image, tag)
+			return "", warnings, fmt.Errorf("No such image: %s (tag: %s)", config.Image, tag)
 		}
-		return err
+		return "", warnings, err
 	}
 	if !container.Config.NetworkDisabled && daemon.SystemConfig().IPv4ForwardingDisabled {
-		log.Printf("IPv4 forwarding is disabled.\n")
+		warnings = append(warnings, "IPv4 forwarding is disabled.\n")
 	}
+
 	container.LogEvent("create")
+	warnings = append(warnings, buildWarnings...)
 
-	job.Printf("%s\n", container.ID)
-
-	for _, warning := range buildWarnings {
-		log.Printf("%s\n", warning)
-	}
-
-	return nil
+	return container.ID, warnings, nil
 }
 
 // Create creates a new container from the given configuration with a given name.

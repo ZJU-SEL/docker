@@ -6,9 +6,11 @@ import (
 
 	"github.com/docker/docker/engine"
 	flag "github.com/docker/docker/pkg/mflag"
-	"github.com/docker/docker/utils"
 )
 
+// CmdLogs fetches the logs of a given container.
+//
+// docker logs [OPTIONS] CONTAINER
 func (cli *DockerCli) CmdLogs(args ...string) error {
 	var (
 		cmd    = cli.Subcmd("logs", "CONTAINER", "Fetch the logs of a container", true)
@@ -18,11 +20,11 @@ func (cli *DockerCli) CmdLogs(args ...string) error {
 	)
 	cmd.Require(flag.Exact, 1)
 
-	utils.ParseFlags(cmd, args, true)
+	cmd.ParseFlags(args, true)
 
 	name := cmd.Arg(0)
 
-	stream, _, err := cli.call("GET", "/containers/"+name+"/json", nil, false)
+	stream, _, err := cli.call("GET", "/containers/"+name+"/json", nil, nil)
 	if err != nil {
 		return err
 	}

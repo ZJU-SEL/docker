@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"compress/gzip"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,7 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
+	"github.com/docker/distribution/digest"
 	"github.com/docker/docker/autogen/dockerversion"
 	"github.com/docker/docker/daemon/graphdriver"
 	"github.com/docker/docker/image"
@@ -22,7 +25,6 @@ import (
 	"github.com/docker/docker/pkg/stringid"
 	"github.com/docker/docker/pkg/truncindex"
 	"github.com/docker/docker/runconfig"
-	"github.com/docker/docker/utils"
 )
 
 // A Graph is a store for versioned filesystem images and the relationship between them.
@@ -68,14 +70,14 @@ func (graph *Graph) restore() error {
 		}
 	}
 	graph.idIndex = truncindex.NewTruncIndex(ids)
-	log.Debugf("Restored %d elements", len(dir))
+	logrus.Debugf("Restored %d elements", len(dir))
 	return nil
 }
 
 // FIXME: Implement error subclass instead of looking at the error text
 // Note: This is the way golang implements os.IsNotExists on Plan9
-func (graph *Graph) IsNotExist(err error) bool {
-	return err != nil && (strings.Contains(strings.ToLower(err.Error()), "does not exist") || strings.Contains(strings.ToLower(err.Error()), "no such"))
+func (graph *Graph) IsNotExist(err error, id string) bool {
+	return err != nil && (strings.Contains(strings.ToLower(err.Error()), "does not exist") || strings.Contains(strings.ToLower(err.Error()), "no such")) && strings.Contains(err.Error(), id)
 }
 
 // Exists returns true if an image is registered at the given id.
@@ -151,7 +153,7 @@ func (graph *Graph) Register(img *image.Image, layerData archive.ArchiveReader) 
 			graph.driver.Remove(img.ID)
 		}
 	}()
-	if err := utils.ValidateID(img.ID); err != nil {
+	if err := image.ValidateID(img.ID); err != nil {
 		return err
 	}
 	// (This is a convenience to save time. Race conditions are taken care of by os.Rename)
@@ -242,18 +244,27 @@ func (graph *Graph) newTempFile() (*os.File, error) {
 	return ioutil.TempFile(tmp, "")
 }
 
-func bufferToFile(f *os.File, src io.Reader) (int64, error) {
-	n, err := io.Copy(f, src)
+func bufferToFile(f *os.File, src io.Reader) (int64, digest.Digest, error) {
+	var (
+		h = sha256.New()
+		w = gzip.NewWriter(io.MultiWriter(f, h))
+	)
+	_, err := io.Copy(w, src)
+	w.Close()
 	if err != nil {
-		return n, err
+		return 0, "", err
 	}
 	if err = f.Sync(); err != nil {
-		return n, err
+		return 0, "", err
+	}
+	n, err := f.Seek(0, os.SEEK_CUR)
+	if err != nil {
+		return 0, "", err
 	}
 	if _, err := f.Seek(0, 0); err != nil {
-		return n, err
+		return 0, "", err
 	}
-	return n, nil
+	return n, digest.NewDigest("sha256", h), nil
 }
 
 // setupInitLayer populates a directory with mountpoints suitable

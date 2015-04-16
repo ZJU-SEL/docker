@@ -69,7 +69,7 @@ Follow this workflow as you work:
             For example, if you edited the `docker.go` file you would format the file
             like this:
             </p>
-            <p><code>$ gofmt -s -w file.go</code></p>
+            <p><code>$ gofmt -s -w docker.go</code></p>
             <p>
             Most file editors have a plugin to format for you. Check your editor's
             documentation.
@@ -119,11 +119,7 @@ Follow this workflow as you work:
         To https://github.com/moxiegirl/docker.git
          * [new branch]      11038-fix-rhel-link -> 11038-fix-rhel-link
         Branch 11038-fix-rhel-link set up to track remote branch 11038-fix-rhel-link from origin.
-        
-    The first time you push a change, you must specify the branch. Later, you can just do this:
-    
-    	git push origin
-    	
+
 ## Review your branch on GitHub
 
 After you push a new branch, you should verify it on GitHub:
@@ -153,21 +149,22 @@ You should pull and rebase frequently as you work.
 
 2. Make sure you are in your branch.
 
-		$ git branch 11038-fix-rhel-link
+		$ git checkout 11038-fix-rhel-link
 
-3. Fetch all the changes from the `upstream/master` branch.
+3. Fetch all the changes from the `upstream master` branch.
 
-		 $ git fetch upstream/master
+		 $ git fetch upstream master
 
   	This command says get all the changes from the `master` branch belonging to
   	the `upstream` remote.
 
-4. Rebase your local master with Docker's `upstream/master` branch.
+4. Rebase your master with the local copy of Docker's `master` branch.
 
 		 $ git rebase -i upstream/master
    
-  	This command starts an interactive rebase to merge code from Docker's
-  	`upstream/master` branch into your local branch. If you aren't familiar or
+  	This command starts an interactive rebase to rewrite all the commits from
+	Docker's `upstream/master` onto your local branch, and then re-apply each of
+	your commits on top of the upstream changes. If you aren't familiar or
   	comfortable with rebase, you can <a
   	href="http://nathanleclaire.com/blog/2014/09/14/dont-be-scared-of-git-
   	rebase" target="_blank">learn more about rebasing</a> on the web.
@@ -190,13 +187,16 @@ You should pull and rebase frequently as you work.
   	After closing the file, `git` opens your editor again to edit the commit
   	message. 
 
-7. Edit and save your commit message.
+7. Edit the commit message to reflect the entire change.
 
 	Make sure you include your signature.
 
 8. Push any changes to your fork on GitHub.
 
-		$ git push origin 11038-fix-rhel-link
+	The rebase rewrote history, so you'll need to use the `-f` or `--force` flag
+	to push your change.
+
+		$ git push -f origin 11038-fix-rhel-link
 
 
 ## Where to go next

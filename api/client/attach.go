@@ -5,13 +5,15 @@ import (
 	"io"
 	"net/url"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/engine"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/signal"
-	"github.com/docker/docker/utils"
 )
 
+// CmdAttach attaches to a running container.
+//
+// Usage: docker attach [OPTIONS] CONTAINER
 func (cli *DockerCli) CmdAttach(args ...string) error {
 	var (
 		cmd     = cli.Subcmd("attach", "CONTAINER", "Attach to a running container", true)
@@ -20,10 +22,10 @@ func (cli *DockerCli) CmdAttach(args ...string) error {
 	)
 	cmd.Require(flag.Exact, 1)
 
-	utils.ParseFlags(cmd, args, true)
+	cmd.ParseFlags(args, true)
 	name := cmd.Arg(0)
 
-	stream, _, err := cli.call("GET", "/containers/"+name+"/json", nil, false)
+	stream, _, err := cli.call("GET", "/containers/"+name+"/json", nil, nil)
 	if err != nil {
 		return err
 	}
@@ -48,7 +50,7 @@ func (cli *DockerCli) CmdAttach(args ...string) error {
 
 	if tty && cli.isTerminalOut {
 		if err := cli.monitorTtySize(cmd.Arg(0), false); err != nil {
-			log.Debugf("Error monitoring TTY size: %s", err)
+			logrus.Debugf("Error monitoring TTY size: %s", err)
 		}
 	}
 
@@ -78,7 +80,7 @@ func (cli *DockerCli) CmdAttach(args ...string) error {
 		return err
 	}
 	if status != 0 {
-		return &utils.StatusError{StatusCode: status}
+		return StatusError{StatusCode: status}
 	}
 
 	return nil

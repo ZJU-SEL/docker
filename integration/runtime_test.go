@@ -16,12 +16,14 @@ import (
 	"testing"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon"
 	"github.com/docker/docker/daemon/execdriver"
 	"github.com/docker/docker/engine"
+	"github.com/docker/docker/graph"
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/nat"
+	"github.com/docker/docker/pkg/fileutils"
 	"github.com/docker/docker/pkg/ioutils"
 	"github.com/docker/docker/pkg/reexec"
 	"github.com/docker/docker/pkg/stringid"
@@ -65,17 +67,13 @@ func cleanup(eng *engine.Engine, t *testing.T) error {
 		container.Kill()
 		daemon.Rm(container)
 	}
-	job := eng.Job("images")
-	images, err := job.Stdout.AddTable()
+	images, err := daemon.Repositories().Images(&graph.ImagesConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := job.Run(); err != nil {
-		t.Fatal(err)
-	}
-	for _, image := range images.Data {
-		if image.Get("Id") != unitTestImageID {
-			eng.Job("image_delete", image.Get("Id")).Run()
+	for _, image := range images {
+		if image.ID != unitTestImageID {
+			eng.Job("image_delete", image.ID).Run()
 		}
 	}
 	return nil
@@ -94,23 +92,23 @@ func init() {
 	}
 
 	if uid := syscall.Geteuid(); uid != 0 {
-		log.Fatalf("docker tests need to be run as root")
+		logrus.Fatalf("docker tests need to be run as root")
 	}
 
 	// Copy dockerinit into our current testing directory, if provided (so we can test a separate dockerinit binary)
 	if dockerinit := os.Getenv("TEST_DOCKERINIT_PATH"); dockerinit != "" {
 		src, err := os.Open(dockerinit)
 		if err != nil {
-			log.Fatalf("Unable to open TEST_DOCKERINIT_PATH: %s", err)
+			logrus.Fatalf("Unable to open TEST_DOCKERINIT_PATH: %s", err)
 		}
 		defer src.Close()
 		dst, err := os.OpenFile(filepath.Join(filepath.Dir(utils.SelfPath()), "dockerinit"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0555)
 		if err != nil {
-			log.Fatalf("Unable to create dockerinit in test directory: %s", err)
+			logrus.Fatalf("Unable to create dockerinit in test directory: %s", err)
 		}
 		defer dst.Close()
 		if _, err := io.Copy(dst, src); err != nil {
-			log.Fatalf("Unable to copy dockerinit to TEST_DOCKERINIT_PATH: %s", err)
+			logrus.Fatalf("Unable to copy dockerinit to TEST_DOCKERINIT_PATH: %s", err)
 		}
 		dst.Close()
 		src.Close()
@@ -124,7 +122,7 @@ func init() {
 	spawnGlobalDaemon()
 	spawnLegitHttpsDaemon()
 	spawnRogueHttpsDaemon()
-	startFds, startGoroutines = utils.GetTotalUsedFds(), runtime.NumGoroutine()
+	startFds, startGoroutines = fileutils.GetTotalUsedFds(), runtime.NumGoroutine()
 }
 
 func setupBaseImage() {
@@ -137,14 +135,14 @@ func setupBaseImage() {
 		job = eng.Job("pull", unitTestImageName)
 		job.Stdout.Add(ioutils.NopWriteCloser(os.Stdout))
 		if err := job.Run(); err != nil {
-			log.Fatalf("Unable to pull the test image: %s", err)
+			logrus.Fatalf("Unable to pull the test image: %s", err)
 		}
 	}
 }
 
 func spawnGlobalDaemon() {
 	if globalDaemon != nil {
-		log.Debugf("Global daemon already exists. Skipping.")
+		logrus.Debugf("Global daemon already exists. Skipping.")
 		return
 	}
 	t := std_log.New(os.Stderr, "", 0)
@@ -154,7 +152,7 @@ func spawnGlobalDaemon() {
 
 	// Spawn a Daemon
 	go func() {
-		log.Debugf("Spawning global daemon for integration tests")
+		logrus.Debugf("Spawning global daemon for integration tests")
 		listenURL := &url.URL{
 			Scheme: testDaemonProto,
 			Host:   testDaemonAddr,
@@ -162,7 +160,7 @@ func spawnGlobalDaemon() {
 		job := eng.Job("serveapi", listenURL.String())
 		job.SetenvBool("Logging", true)
 		if err := job.Run(); err != nil {
-			log.Fatalf("Unable to spawn the test daemon: %s", err)
+			logrus.Fatalf("Unable to spawn the test daemon: %s", err)
 		}
 	}()
 
@@ -171,7 +169,7 @@ func spawnGlobalDaemon() {
 	time.Sleep(time.Second)
 
 	if err := eng.Job("acceptconnections").Run(); err != nil {
-		log.Fatalf("Unable to accept connections for test api: %s", err)
+		logrus.Fatalf("Unable to accept connections for test api: %s", err)
 	}
 }
 
@@ -204,7 +202,7 @@ func spawnHttpsDaemon(addr, cacert, cert, key string) *engine.Engine {
 
 	// Spawn a Daemon
 	go func() {
-		log.Debugf("Spawning https daemon for integration tests")
+		logrus.Debugf("Spawning https daemon for integration tests")
 		listenURL := &url.URL{
 			Scheme: testDaemonHttpsProto,
 			Host:   addr,
@@ -217,7 +215,7 @@ func spawnHttpsDaemon(addr, cacert, cert, key string) *engine.Engine {
 		job.Setenv("TlsCert", cert)
 		job.Setenv("TlsKey", key)
 		if err := job.Run(); err != nil {
-			log.Fatalf("Unable to spawn the test daemon: %s", err)
+			logrus.Fatalf("Unable to spawn the test daemon: %s", err)
 		}
 	}()
 
@@ -225,7 +223,7 @@ func spawnHttpsDaemon(addr, cacert, cert, key string) *engine.Engine {
 	time.Sleep(time.Second)
 
 	if err := eng.Job("acceptconnections").Run(); err != nil {
-		log.Fatalf("Unable to accept connections for test api: %s", err)
+		logrus.Fatalf("Unable to accept connections for test api: %s", err)
 	}
 	return eng
 }
@@ -235,14 +233,14 @@ func spawnHttpsDaemon(addr, cacert, cert, key string) *engine.Engine {
 func GetTestImage(daemon *daemon.Daemon) *image.Image {
 	imgs, err := daemon.Graph().Map()
 	if err != nil {
-		log.Fatalf("Unable to get the test image: %s", err)
+		logrus.Fatalf("Unable to get the test image: %s", err)
 	}
 	for _, image := range imgs {
 		if image.ID == unitTestImageID {
 			return image
 		}
 	}
-	log.Fatalf("Test image %v not found in %s: %s", unitTestImageID, daemon.Graph().Root, imgs)
+	logrus.Fatalf("Test image %v not found in %s: %s", unitTestImageID, daemon.Graph().Root, imgs)
 	return nil
 }
 
@@ -257,7 +255,7 @@ func TestDaemonCreate(t *testing.T) {
 
 	container, _, err := daemon.Create(&runconfig.Config{
 		Image: GetTestImage(daemon).ID,
-		Cmd:   []string{"ls", "-al"},
+		Cmd:   runconfig.NewCommand("ls", "-al"),
 	},
 		&runconfig.HostConfig{},
 		"",
@@ -298,15 +296,16 @@ func TestDaemonCreate(t *testing.T) {
 	}
 
 	// Test that conflict error displays correct details
+	cmd := runconfig.NewCommand("ls", "-al")
 	testContainer, _, _ := daemon.Create(
 		&runconfig.Config{
 			Image: GetTestImage(daemon).ID,
-			Cmd:   []string{"ls", "-al"},
+			Cmd:   cmd,
 		},
 		&runconfig.HostConfig{},
 		"conflictname",
 	)
-	if _, _, err := daemon.Create(&runconfig.Config{Image: GetTestImage(daemon).ID, Cmd: []string{"ls", "-al"}}, &runconfig.HostConfig{}, testContainer.Name); err == nil || !strings.Contains(err.Error(), stringid.TruncateID(testContainer.ID)) {
+	if _, _, err := daemon.Create(&runconfig.Config{Image: GetTestImage(daemon).ID, Cmd: cmd}, &runconfig.HostConfig{}, testContainer.Name); err == nil || !strings.Contains(err.Error(), stringid.TruncateID(testContainer.ID)) {
 		t.Fatalf("Name conflict error doesn't include the correct short id. Message was: %v", err)
 	}
 
@@ -318,7 +317,7 @@ func TestDaemonCreate(t *testing.T) {
 	if _, _, err := daemon.Create(
 		&runconfig.Config{
 			Image: GetTestImage(daemon).ID,
-			Cmd:   []string{},
+			Cmd:   runconfig.NewCommand(),
 		},
 		&runconfig.HostConfig{},
 		"",
@@ -328,7 +327,7 @@ func TestDaemonCreate(t *testing.T) {
 
 	config := &runconfig.Config{
 		Image:     GetTestImage(daemon).ID,
-		Cmd:       []string{"/bin/ls"},
+		Cmd:       runconfig.NewCommand("/bin/ls"),
 		PortSpecs: []string{"80"},
 	}
 	container, _, err = daemon.Create(config, &runconfig.HostConfig{}, "")
@@ -341,7 +340,7 @@ func TestDaemonCreate(t *testing.T) {
 	// test expose 80:8000
 	container, warnings, err := daemon.Create(&runconfig.Config{
 		Image:     GetTestImage(daemon).ID,
-		Cmd:       []string{"ls", "-al"},
+		Cmd:       runconfig.NewCommand("ls", "-al"),
 		PortSpecs: []string{"80:8000"},
 	},
 		&runconfig.HostConfig{},
@@ -361,7 +360,7 @@ func TestDestroy(t *testing.T) {
 
 	container, _, err := daemon.Create(&runconfig.Config{
 		Image: GetTestImage(daemon).ID,
-		Cmd:   []string{"ls", "-al"},
+		Cmd:   runconfig.NewCommand("ls", "-al"),
 	},
 		&runconfig.HostConfig{},
 		"")
@@ -424,14 +423,13 @@ func TestGet(t *testing.T) {
 
 func startEchoServerContainer(t *testing.T, proto string) (*daemon.Daemon, *daemon.Container, string) {
 	var (
-		err          error
-		id           string
-		outputBuffer = bytes.NewBuffer(nil)
-		strPort      string
-		eng          = NewTestEngine(t)
-		daemon       = mkDaemonFromEngine(eng, t)
-		port         = 5554
-		p            nat.Port
+		err     error
+		id      string
+		strPort string
+		eng     = NewTestEngine(t)
+		daemon  = mkDaemonFromEngine(eng, t)
+		port    = 5554
+		p       nat.Port
 	)
 	defer func() {
 		if err != nil {
@@ -454,16 +452,14 @@ func startEchoServerContainer(t *testing.T, proto string) (*daemon.Daemon, *daem
 		p = nat.Port(fmt.Sprintf("%s/%s", strPort, proto))
 		ep[p] = struct{}{}
 
-		jobCreate := eng.Job("create")
-		jobCreate.Setenv("Image", unitTestImageID)
-		jobCreate.SetenvList("Cmd", []string{"sh", "-c", cmd})
-		jobCreate.SetenvList("PortSpecs", []string{fmt.Sprintf("%s/%s", strPort, proto)})
-		jobCreate.SetenvJson("ExposedPorts", ep)
-		jobCreate.Stdout.Add(outputBuffer)
-		if err := jobCreate.Run(); err != nil {
-			t.Fatal(err)
+		c := &runconfig.Config{
+			Image:        unitTestImageID,
+			Cmd:          runconfig.NewCommand("sh", "-c", cmd),
+			PortSpecs:    []string{fmt.Sprintf("%s/%s", strPort, proto)},
+			ExposedPorts: ep,
 		}
-		id = engine.Tail(outputBuffer, 1)
+
+		id, _, err = daemon.ContainerCreate(unitTestImageID, c, &runconfig.HostConfig{})
 		// FIXME: this relies on the undocumented behavior of daemon.Create
 		// which will return a nil error AND container if the exposed ports
 		// are invalid. That behavior should be fixed!
@@ -474,15 +470,7 @@ func startEchoServerContainer(t *testing.T, proto string) (*daemon.Daemon, *daem
 
 	}
 
-	jobStart := eng.Job("start", id)
-	portBindings := make(map[nat.Port][]nat.PortBinding)
-	portBindings[p] = []nat.PortBinding{
-		{},
-	}
-	if err := jobStart.SetenvJson("PortsBindings", portBindings); err != nil {
-		t.Fatal(err)
-	}
-	if err := jobStart.Run(); err != nil {
+	if err := daemon.ContainerStart(id, &runconfig.HostConfig{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -707,9 +695,9 @@ func TestRandomContainerName(t *testing.T) {
 	}
 
 	if c, err := daemon.Get(container.Name); err != nil {
-		log.Fatalf("Could not lookup container %s by its name", container.Name)
+		logrus.Fatalf("Could not lookup container %s by its name", container.Name)
 	} else if c.ID != containerID {
-		log.Fatalf("Looking up container name %s returned id %s instead of %s", container.Name, c.ID, containerID)
+		logrus.Fatalf("Looking up container name %s returned id %s instead of %s", container.Name, c.ID, containerID)
 	}
 }
 
@@ -733,20 +721,15 @@ func TestContainerNameValidation(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		var outputBuffer = bytes.NewBuffer(nil)
-		job := eng.Job("create", test.Name)
-		if err := job.ImportEnv(config); err != nil {
-			t.Fatal(err)
-		}
-		job.Stdout.Add(outputBuffer)
-		if err := job.Run(); err != nil {
+		containerId, _, err := daemon.ContainerCreate(test.Name, config, &runconfig.HostConfig{})
+		if err != nil {
 			if !test.Valid {
 				continue
 			}
 			t.Fatal(err)
 		}
 
-		container, err := daemon.Get(engine.Tail(outputBuffer, 1))
+		container, err := daemon.Get(containerId)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -761,7 +744,6 @@ func TestContainerNameValidation(t *testing.T) {
 			t.Fatalf("Container /%s has ID %s instead of %s", test.Name, c.ID, container.ID)
 		}
 	}
-
 }
 
 func TestLinkChildContainer(t *testing.T) {
@@ -878,7 +860,7 @@ func TestDestroyWithInitLayer(t *testing.T) {
 
 	container, _, err := daemon.Create(&runconfig.Config{
 		Image: GetTestImage(daemon).ID,
-		Cmd:   []string{"ls", "-al"},
+		Cmd:   runconfig.NewCommand("ls", "-al"),
 	},
 		&runconfig.HostConfig{},
 		"")

@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/docker/libcontainer"
+	"github.com/docker/libcontainer/cgroups/systemd"
 	"github.com/docker/libcontainer/configs"
 )
 
@@ -395,7 +397,7 @@ func TestProcessEnv(t *testing.T) {
 	}
 }
 
-func TestFreeze(t *testing.T) {
+func TestProcessCaps(t *testing.T) {
 	if testing.Short() {
 		return
 	}
@@ -412,6 +414,104 @@ func TestFreeze(t *testing.T) {
 	defer remove(rootfs)
 
 	config := newTemplateConfig(rootfs)
+
+	factory, err := libcontainer.New(root, libcontainer.Cgroupfs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	container, err := factory.Create("test", config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer container.Destroy()
+
+	processCaps := append(config.Capabilities, "NET_ADMIN")
+
+	var stdout bytes.Buffer
+	pconfig := libcontainer.Process{
+		Args:         []string{"sh", "-c", "cat /proc/self/status"},
+		Env:          standardEnvironment,
+		Capabilities: processCaps,
+		Stdin:        nil,
+		Stdout:       &stdout,
+	}
+	err = container.Start(&pconfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for process
+	waitProcess(&pconfig, t)
+
+	outputStatus := string(stdout.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lines := strings.Split(outputStatus, "\n")
+
+	effectiveCapsLine := ""
+	for _, l := range lines {
+		line := strings.TrimSpace(l)
+		if strings.Contains(line, "CapEff:") {
+			effectiveCapsLine = line
+			break
+		}
+	}
+
+	if effectiveCapsLine == "" {
+		t.Fatal("Couldn't find effective caps: ", outputStatus)
+	}
+
+	parts := strings.Split(effectiveCapsLine, ":")
+	effectiveCapsStr := strings.TrimSpace(parts[1])
+
+	effectiveCaps, err := strconv.ParseUint(effectiveCapsStr, 16, 64)
+	if err != nil {
+		t.Fatal("Could not parse effective caps", err)
+	}
+
+	var netAdminMask uint64
+	var netAdminBit uint
+	netAdminBit = 12 // from capability.h
+	netAdminMask = 1 << netAdminBit
+	if effectiveCaps&netAdminMask != netAdminMask {
+		t.Fatal("CAP_NET_ADMIN is not set as expected")
+	}
+}
+
+func TestFreeze(t *testing.T) {
+	testFreeze(t, false)
+}
+
+func TestSystemdFreeze(t *testing.T) {
+	if !systemd.UseSystemd() {
+		t.Skip("Systemd is unsupported")
+	}
+	testFreeze(t, true)
+}
+
+func testFreeze(t *testing.T, systemd bool) {
+	if testing.Short() {
+		return
+	}
+	root, err := newTestRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+
+	rootfs, err := newRootfs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer remove(rootfs)
+
+	config := newTemplateConfig(rootfs)
+	if systemd {
+		config.Cgroups.Slice = "system.slice"
+	}
 
 	factory, err := libcontainer.New(root, libcontainer.Cgroupfs)
 	if err != nil {
@@ -473,4 +573,78 @@ func TestFreeze(t *testing.T) {
 	if !s.Success() {
 		t.Fatal(s.String())
 	}
+}
+
+func TestContainerState(t *testing.T) {
+	if testing.Short() {
+		return
+	}
+	root, err := newTestRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+
+	rootfs, err := newRootfs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer remove(rootfs)
+
+	l, err := os.Readlink("/proc/1/ns/ipc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	config := newTemplateConfig(rootfs)
+	config.Namespaces = configs.Namespaces([]configs.Namespace{
+		{Type: configs.NEWNS},
+		{Type: configs.NEWUTS},
+		// host for IPC
+		//{Type: configs.NEWIPC},
+		{Type: configs.NEWPID},
+		{Type: configs.NEWNET},
+	})
+
+	factory, err := libcontainer.New(root, libcontainer.Cgroupfs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	container, err := factory.Create("test", config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer container.Destroy()
+
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &libcontainer.Process{
+		Args:  []string{"cat"},
+		Env:   standardEnvironment,
+		Stdin: stdinR,
+	}
+	err = container.Start(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdinR.Close()
+	defer p.Signal(os.Kill)
+
+	st, err := container.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	l1, err := os.Readlink(st.NamespacePaths[configs.NEWIPC])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l1 != l {
+		t.Fatal("Container using non-host ipc namespace")
+	}
+	stdinW.Close()
+	p.Wait()
 }

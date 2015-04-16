@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -15,7 +16,7 @@ func TestInspectApiContainerResponse(t *testing.T) {
 		t.Fatalf("failed to create a container: %s, %v", out, err)
 	}
 
-	cleanedContainerID := stripTrailingCharacters(out)
+	cleanedContainerID := strings.TrimSpace(out)
 
 	// test on json marshal version
 	// and latest version
@@ -26,7 +27,7 @@ func TestInspectApiContainerResponse(t *testing.T) {
 		if testVersion != "latest" {
 			endpoint = "/" + testVersion + endpoint
 		}
-		body, err := sockRequest("GET", endpoint, nil)
+		_, body, err := sockRequest("GET", endpoint, nil)
 		if err != nil {
 			t.Fatalf("sockRequest failed for %s version: %v", testVersion, err)
 		}
@@ -46,7 +47,7 @@ func TestInspectApiContainerResponse(t *testing.T) {
 
 		for _, key := range keys {
 			if _, ok := inspectJSON[key]; !ok {
-				t.Fatalf("%s does not exist in reponse for %s version", key, testVersion)
+				t.Fatalf("%s does not exist in response for %s version", key, testVersion)
 			}
 		}
 		//Issue #6830: type not properly converted to JSON/back

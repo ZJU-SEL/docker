@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/docker/docker/image"
 	"github.com/docker/docker/opts"
 	flag "github.com/docker/docker/pkg/mflag"
-	"github.com/docker/docker/utils"
 )
 
 // Options holds command line options.
@@ -60,10 +60,10 @@ func (ipnet *netIPNet) MarshalJSON() ([]byte, error) {
 }
 
 func (ipnet *netIPNet) UnmarshalJSON(b []byte) (err error) {
-	var ipnet_str string
-	if err = json.Unmarshal(b, &ipnet_str); err == nil {
+	var ipnetStr string
+	if err = json.Unmarshal(b, &ipnetStr); err == nil {
 		var cidr *net.IPNet
-		if _, cidr, err = net.ParseCIDR(ipnet_str); err == nil {
+		if _, cidr, err = net.ParseCIDR(ipnetStr); err == nil {
 			*ipnet = netIPNet(*cidr)
 		}
 	}
@@ -213,7 +213,7 @@ func validateRemoteName(remoteName string) error {
 		name = nameParts[0]
 
 		// the repository name must not be a valid image ID
-		if err := utils.ValidateID(name); err == nil {
+		if err := image.ValidateID(name); err == nil {
 			return fmt.Errorf("Invalid repository name (%s), cannot specify 64-byte hexadecimal strings", name)
 		}
 	} else {

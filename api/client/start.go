@@ -6,12 +6,11 @@ import (
 	"net/url"
 	"os"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/engine"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/promise"
 	"github.com/docker/docker/pkg/signal"
-	"github.com/docker/docker/utils"
 )
 
 func (cli *DockerCli) forwardAllSignals(cid string) chan os.Signal {
@@ -30,16 +29,19 @@ func (cli *DockerCli) forwardAllSignals(cid string) chan os.Signal {
 				}
 			}
 			if sig == "" {
-				log.Errorf("Unsupported signal: %v. Discarding.", s)
+				logrus.Errorf("Unsupported signal: %v. Discarding.", s)
 			}
-			if _, _, err := readBody(cli.call("POST", fmt.Sprintf("/containers/%s/kill?signal=%s", cid, sig), nil, false)); err != nil {
-				log.Debugf("Error sending signal: %s", err)
+			if _, _, err := readBody(cli.call("POST", fmt.Sprintf("/containers/%s/kill?signal=%s", cid, sig), nil, nil)); err != nil {
+				logrus.Debugf("Error sending signal: %s", err)
 			}
 		}
 	}()
 	return sigc
 }
 
+// CmdStart starts one or more stopped containers.
+//
+// Usage: docker start [OPTIONS] CONTAINER [CONTAINER...]
 func (cli *DockerCli) CmdStart(args ...string) error {
 	var (
 		cErr chan error
@@ -51,14 +53,14 @@ func (cli *DockerCli) CmdStart(args ...string) error {
 	)
 
 	cmd.Require(flag.Min, 1)
-	utils.ParseFlags(cmd, args, true)
+	cmd.ParseFlags(args, true)
 
 	if *attach || *openStdin {
 		if cmd.NArg() > 1 {
 			return fmt.Errorf("You cannot start and attach multiple containers at once.")
 		}
 
-		stream, _, err := cli.call("GET", "/containers/"+cmd.Arg(0)+"/json", nil, false)
+		stream, _, err := cli.call("GET", "/containers/"+cmd.Arg(0)+"/json", nil, nil)
 		if err != nil {
 			return err
 		}
@@ -91,9 +93,9 @@ func (cli *DockerCli) CmdStart(args ...string) error {
 		hijacked := make(chan io.Closer)
 		// Block the return until the chan gets closed
 		defer func() {
-			log.Debugf("CmdStart() returned, defer waiting for hijack to finish.")
+			logrus.Debugf("CmdStart() returned, defer waiting for hijack to finish.")
 			if _, ok := <-hijacked; ok {
-				log.Errorf("Hijack did not finish (chan still open)")
+				logrus.Errorf("Hijack did not finish (chan still open)")
 			}
 			cli.in.Close()
 		}()
@@ -118,7 +120,7 @@ func (cli *DockerCli) CmdStart(args ...string) error {
 
 	var encounteredError error
 	for _, name := range cmd.Args() {
-		_, _, err := readBody(cli.call("POST", "/containers/"+name+"/start", nil, false))
+		_, _, err := readBody(cli.call("POST", "/containers/"+name+"/start", nil, nil))
 		if err != nil {
 			if !*attach && !*openStdin {
 				// attach and openStdin is false means it could be starting multiple containers
@@ -142,7 +144,7 @@ func (cli *DockerCli) CmdStart(args ...string) error {
 	if *openStdin || *attach {
 		if tty && cli.isTerminalOut {
 			if err := cli.monitorTtySize(cmd.Arg(0), false); err != nil {
-				log.Errorf("Error monitoring TTY size: %s", err)
+				logrus.Errorf("Error monitoring TTY size: %s", err)
 			}
 		}
 		if attchErr := <-cErr; attchErr != nil {
@@ -153,7 +155,7 @@ func (cli *DockerCli) CmdStart(args ...string) error {
 			return err
 		}
 		if status != 0 {
-			return &utils.StatusError{StatusCode: status}
+			return StatusError{StatusCode: status}
 		}
 	}
 	return nil

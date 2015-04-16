@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/docker/docker/engine"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/opts"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/parsers"
 	"github.com/docker/docker/registry"
 	"github.com/docker/docker/runconfig"
-	"github.com/docker/docker/utils"
 )
 
+// CmdCommit creates a new image from a container's changes.
+//
+// Usage: docker commit [OPTIONS] CONTAINER [REPOSITORY[:TAG]]
 func (cli *DockerCli) CmdCommit(args ...string) error {
 	cmd := cli.Subcmd("commit", "CONTAINER [REPOSITORY[:TAG]]", "Create a new image from a container's changes", true)
 	flPause := cmd.Bool([]string{"p", "-pause"}, true, "Pause container during commit")
@@ -25,7 +27,7 @@ func (cli *DockerCli) CmdCommit(args ...string) error {
 	flConfig := cmd.String([]string{"#run", "#-run"}, "", "This option is deprecated and will be removed in a future version in favor of inline Dockerfile-compatible commands")
 	cmd.Require(flag.Max, 2)
 	cmd.Require(flag.Min, 1)
-	utils.ParseFlags(cmd, args, true)
+	cmd.ParseFlags(args, true)
 
 	var (
 		name            = cmd.Arg(0)
@@ -54,23 +56,25 @@ func (cli *DockerCli) CmdCommit(args ...string) error {
 	}
 
 	var (
-		config *runconfig.Config
-		env    engine.Env
+		config   *runconfig.Config
+		response types.ContainerCommitResponse
 	)
+
 	if *flConfig != "" {
 		config = &runconfig.Config{}
 		if err := json.Unmarshal([]byte(*flConfig), config); err != nil {
 			return err
 		}
 	}
-	stream, _, err := cli.call("POST", "/commit?"+v.Encode(), config, false)
+	stream, _, err := cli.call("POST", "/commit?"+v.Encode(), config, nil)
 	if err != nil {
 		return err
 	}
-	if err := env.Decode(stream); err != nil {
+
+	if err := json.NewDecoder(stream).Decode(&response); err != nil {
 		return err
 	}
 
-	fmt.Fprintf(cli.out, "%s\n", env.Get("Id"))
+	fmt.Fprintln(cli.out, response.ID)
 	return nil
 }

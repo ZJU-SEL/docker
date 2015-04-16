@@ -329,6 +329,7 @@ func TestDaemonVolumesBindsRefs(t *testing.T) {
 	if err := d.StartWithBusybox(); err != nil {
 		t.Fatal(err)
 	}
+	defer d.Stop()
 
 	tmp, err := ioutil.TempDir(os.TempDir(), "")
 	if err != nil {
@@ -418,6 +419,7 @@ func TestDaemonUpgradeWithVolumes(t *testing.T) {
 	if err := d.StartWithBusybox("-g", graphDir); err != nil {
 		t.Fatal(err)
 	}
+	defer d.Stop()
 
 	tmpDir := filepath.Join(os.TempDir(), "test")
 	defer os.RemoveAll(tmpDir)
@@ -516,6 +518,7 @@ func TestDaemonUlimitDefaults(t *testing.T) {
 	if err := d.StartWithBusybox("--default-ulimit", "nofile=42:42", "--default-ulimit", "nproc=1024:1024"); err != nil {
 		t.Fatal(err)
 	}
+	defer d.Stop()
 
 	out, err := d.Cmd("run", "--ulimit", "nproc=2048", "--name=test", "busybox", "/bin/sh", "-c", "echo $(ulimit -n); echo $(ulimit -p)")
 	if err != nil {
@@ -524,7 +527,7 @@ func TestDaemonUlimitDefaults(t *testing.T) {
 
 	outArr := strings.Split(out, "\n")
 	if len(outArr) < 2 {
-		t.Fatal("got unexpected output: %s", out)
+		t.Fatalf("got unexpected output: %s", out)
 	}
 	nofile := strings.TrimSpace(outArr[0])
 	nproc := strings.TrimSpace(outArr[1])
@@ -548,7 +551,7 @@ func TestDaemonUlimitDefaults(t *testing.T) {
 
 	outArr = strings.Split(out, "\n")
 	if len(outArr) < 2 {
-		t.Fatal("got unexpected output: %s", out)
+		t.Fatalf("got unexpected output: %s", out)
 	}
 	nofile = strings.TrimSpace(outArr[0])
 	nproc = strings.TrimSpace(outArr[1])
@@ -569,6 +572,7 @@ func TestDaemonRestartRenameContainer(t *testing.T) {
 	if err := d.StartWithBusybox(); err != nil {
 		t.Fatal(err)
 	}
+	defer d.Stop()
 
 	if out, err := d.Cmd("run", "--name=test", "busybox"); err != nil {
 		t.Fatal(err, out)
@@ -616,9 +620,9 @@ func TestDaemonLoggingDriverDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	var res struct {
-		Log    string    `json:log`
-		Stream string    `json:stream`
-		Time   time.Time `json:time`
+		Log    string    `json:"log"`
+		Stream string    `json:"stream"`
+		Time   time.Time `json:"time"`
 	}
 	if err := json.NewDecoder(f).Decode(&res); err != nil {
 		t.Fatal(err)
@@ -712,9 +716,9 @@ func TestDaemonLoggingDriverNoneOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	var res struct {
-		Log    string    `json:log`
-		Stream string    `json:stream`
-		Time   time.Time `json:time`
+		Log    string    `json:"log"`
+		Stream string    `json:"stream"`
+		Time   time.Time `json:"time"`
 	}
 	if err := json.NewDecoder(f).Decode(&res); err != nil {
 		t.Fatal(err)
@@ -760,6 +764,7 @@ func TestDaemonDots(t *testing.T) {
 	if err := d.StartWithBusybox(); err != nil {
 		t.Fatal(err)
 	}
+	defer d.Stop()
 
 	// Now create 4 containers
 	if _, err := d.Cmd("create", "busybox"); err != nil {
@@ -813,6 +818,7 @@ func TestDaemonUnixSockCleanedUp(t *testing.T) {
 	if err := d.Start("--host", "unix://"+sockPath); err != nil {
 		t.Fatal(err)
 	}
+	defer d.Stop()
 
 	if _, err := os.Stat(sockPath); err != nil {
 		t.Fatal("socket does not exist")
@@ -827,4 +833,107 @@ func TestDaemonUnixSockCleanedUp(t *testing.T) {
 	}
 
 	logDone("daemon - unix socket is cleaned up")
+}
+
+func TestDaemonwithwrongkey(t *testing.T) {
+	type Config struct {
+		Crv string `json:"crv"`
+		D   string `json:"d"`
+		Kid string `json:"kid"`
+		Kty string `json:"kty"`
+		X   string `json:"x"`
+		Y   string `json:"y"`
+	}
+
+	os.Remove("/etc/docker/key.json")
+	d := NewDaemon(t)
+	if err := d.Start(); err != nil {
+		t.Fatalf("Failed to start daemon: %v", err)
+	}
+
+	if err := d.Stop(); err != nil {
+		t.Fatalf("Could not stop daemon: %v", err)
+	}
+
+	config := &Config{}
+	bytes, err := ioutil.ReadFile("/etc/docker/key.json")
+	if err != nil {
+		t.Fatalf("Error reading key.json file: %s", err)
+	}
+
+	// byte[] to Data-Struct
+	if err := json.Unmarshal(bytes, &config); err != nil {
+		t.Fatalf("Error Unmarshal: %s", err)
+	}
+
+	//replace config.Kid with the fake value
+	config.Kid = "VSAJ:FUYR:X3H2:B2VZ:KZ6U:CJD5:K7BX:ZXHY:UZXT:P4FT:MJWG:HRJ4"
+
+	// NEW Data-Struct to byte[]
+	newBytes, err := json.Marshal(&config)
+	if err != nil {
+		t.Fatalf("Error Marshal: %s", err)
+	}
+
+	// write back
+	if err := ioutil.WriteFile("/etc/docker/key.json", newBytes, 0400); err != nil {
+		t.Fatalf("Error ioutil.WriteFile: %s", err)
+	}
+
+	d1 := NewDaemon(t)
+	defer os.Remove("/etc/docker/key.json")
+
+	if err := d1.Start(); err == nil {
+		d1.Stop()
+		t.Fatalf("It should not be succssful to start daemon with wrong key: %v", err)
+	}
+
+	content, _ := ioutil.ReadFile(d1.logFile.Name())
+
+	if !strings.Contains(string(content), "Public Key ID does not match") {
+		t.Fatal("Missing KeyID message from daemon logs")
+	}
+
+	logDone("daemon - it should be failed to start daemon with wrong key")
+}
+
+func TestDaemonRestartKillWait(t *testing.T) {
+	d := NewDaemon(t)
+	if err := d.StartWithBusybox(); err != nil {
+		t.Fatalf("Could not start daemon with busybox: %v", err)
+	}
+	defer d.Stop()
+
+	out, err := d.Cmd("run", "-id", "busybox", "/bin/cat")
+	if err != nil {
+		t.Fatalf("Could not run /bin/cat: err=%v\n%s", err, out)
+	}
+	containerID := strings.TrimSpace(out)
+
+	if out, err := d.Cmd("kill", containerID); err != nil {
+		t.Fatalf("Could not kill %s: err=%v\n%s", containerID, err, out)
+	}
+
+	if err := d.Restart(); err != nil {
+		t.Fatalf("Could not restart daemon: %v", err)
+	}
+
+	errchan := make(chan error)
+	go func() {
+		if out, err := d.Cmd("wait", containerID); err != nil {
+			errchan <- fmt.Errorf("%v:\n%s", err, out)
+		}
+		close(errchan)
+	}()
+
+	select {
+	case <-time.After(5 * time.Second):
+		t.Fatal("Waiting on a stopped (killed) container timed out")
+	case err := <-errchan:
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	logDone("wait - wait on a stopped container doesn't timeout")
 }

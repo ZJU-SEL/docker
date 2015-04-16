@@ -110,6 +110,7 @@ type Resources struct {
 	MemorySwap int64            `json:"memory_swap"`
 	CpuShares  int64            `json:"cpu_shares"`
 	CpusetCpus string           `json:"cpuset_cpus"`
+	CpusetMems string           `json:"cpuset_mems"`
 	Rlimits    []*ulimit.Rlimit `json:"rlimits"`
 }
 
@@ -173,7 +174,6 @@ func InitContainer(c *Command) *configs.Config {
 	container.Hostname = getEnv("HOSTNAME", c.ProcessConfig.Env)
 	container.Cgroups.Name = c.ID
 	container.Cgroups.AllowedDevices = c.AllowedDevices
-	container.Readonlyfs = c.ReadonlyRootfs
 	container.Devices = c.AutoCreatedDevices
 	container.Rootfs = c.Rootfs
 	container.Readonlyfs = c.ReadonlyRootfs
@@ -205,6 +205,7 @@ func SetupCgroups(container *configs.Config, c *Command) error {
 		container.Cgroups.MemoryReservation = c.Resources.Memory
 		container.Cgroups.MemorySwap = c.Resources.MemorySwap
 		container.Cgroups.CpusetCpus = c.Resources.CpusetCpus
+		container.Cgroups.CpusetMems = c.Resources.CpusetMems
 	}
 
 	return nil

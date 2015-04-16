@@ -5,20 +5,21 @@ import (
 	"os"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/engine"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/units"
-	"github.com/docker/docker/utils"
 )
 
-// 'docker info': display system-wide information.
+// CmdInfo displays system-wide information.
+//
+// Usage: docker info
 func (cli *DockerCli) CmdInfo(args ...string) error {
 	cmd := cli.Subcmd("info", "", "Display system-wide information", true)
 	cmd.Require(flag.Exact, 0)
-	utils.ParseFlags(cmd, args, false)
+	cmd.ParseFlags(args, false)
 
-	body, _, err := readBody(cli.call("GET", "/info", nil, false))
+	body, _, err := readBody(cli.call("GET", "/info", nil, nil))
 	if err != nil {
 		return err
 	}
@@ -30,7 +31,7 @@ func (cli *DockerCli) CmdInfo(args ...string) error {
 	}
 
 	if _, err := out.Write(body); err != nil {
-		log.Errorf("Error reading remote info: %s", err)
+		logrus.Errorf("Error reading remote info: %s", err)
 		return err
 	}
 	out.Close()
@@ -55,6 +56,9 @@ func (cli *DockerCli) CmdInfo(args ...string) error {
 	}
 	if remoteInfo.Exists("ExecutionDriver") {
 		fmt.Fprintf(cli.out, "Execution Driver: %s\n", remoteInfo.Get("ExecutionDriver"))
+	}
+	if remoteInfo.Exists("LoggingDriver") {
+		fmt.Fprintf(cli.out, "Logging Driver: %s\n", remoteInfo.Get("LoggingDriver"))
 	}
 	if remoteInfo.Exists("KernelVersion") {
 		fmt.Fprintf(cli.out, "Kernel Version: %s\n", remoteInfo.Get("KernelVersion"))
@@ -89,7 +93,7 @@ func (cli *DockerCli) CmdInfo(args ...string) error {
 		if remoteInfo.Exists("SystemTime") {
 			t, err := remoteInfo.GetTime("SystemTime")
 			if err != nil {
-				log.Errorf("Error reading system time: %v", err)
+				logrus.Errorf("Error reading system time: %v", err)
 			} else {
 				fmt.Fprintf(cli.out, "System Time: %s\n", t.Format(time.UnixDate))
 			}

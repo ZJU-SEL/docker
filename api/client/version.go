@@ -4,20 +4,23 @@ import (
 	"fmt"
 	"runtime"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api"
 	"github.com/docker/docker/autogen/dockerversion"
 	"github.com/docker/docker/engine"
 	flag "github.com/docker/docker/pkg/mflag"
-	"github.com/docker/docker/utils"
 )
 
-// 'docker version': show version information
+// CmdVersion shows Docker version information.
+//
+// Available version information is shown for: client Docker version, client API version, client Go version, client Git commit, client OS/Arch, server Docker version, server API version, server Go version, server Git commit, and server OS/Arch.
+//
+// Usage: docker version
 func (cli *DockerCli) CmdVersion(args ...string) error {
 	cmd := cli.Subcmd("version", "", "Show the Docker version information.", true)
 	cmd.Require(flag.Exact, 0)
 
-	utils.ParseFlags(cmd, args, false)
+	cmd.ParseFlags(args, false)
 
 	if dockerversion.VERSION != "" {
 		fmt.Fprintf(cli.out, "Client version: %s\n", dockerversion.VERSION)
@@ -29,7 +32,7 @@ func (cli *DockerCli) CmdVersion(args ...string) error {
 	}
 	fmt.Fprintf(cli.out, "OS/Arch (client): %s/%s\n", runtime.GOOS, runtime.GOARCH)
 
-	body, _, err := readBody(cli.call("GET", "/version", nil, false))
+	body, _, err := readBody(cli.call("GET", "/version", nil, nil))
 	if err != nil {
 		return err
 	}
@@ -37,11 +40,11 @@ func (cli *DockerCli) CmdVersion(args ...string) error {
 	out := engine.NewOutput()
 	remoteVersion, err := out.AddEnv()
 	if err != nil {
-		log.Errorf("Error reading remote version: %s", err)
+		logrus.Errorf("Error reading remote version: %s", err)
 		return err
 	}
 	if _, err := out.Write(body); err != nil {
-		log.Errorf("Error reading remote version: %s", err)
+		logrus.Errorf("Error reading remote version: %s", err)
 		return err
 	}
 	out.Close()

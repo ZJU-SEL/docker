@@ -49,7 +49,7 @@ func TestStartAttachCorrectExitCode(t *testing.T) {
 		t.Fatalf("failed to run container: %v, output: %q", err, out)
 	}
 
-	out = stripTrailingCharacters(out)
+	out = strings.TrimSpace(out)
 
 	// make sure the container has exited before trying the "start -a"
 	waitCmd := exec.Command(dockerBinary, "wait", out)
@@ -69,7 +69,7 @@ func TestStartAttachCorrectExitCode(t *testing.T) {
 	logDone("start - correct exit code returned with -a")
 }
 
-func TestStartSilentAttach(t *testing.T) {
+func TestStartAttachSilent(t *testing.T) {
 	defer deleteAllContainers()
 
 	name := "teststartattachcorrectexitcode"
@@ -158,9 +158,9 @@ func TestStartVolumesFromFailsCleanly(t *testing.T) {
 
 	// Check that we have the volumes we want
 	out, _, _ := dockerCmd(t, "inspect", "--format='{{ len .Volumes }}'", "consumer")
-	n_volumes := strings.Trim(out, " \r\n'")
-	if n_volumes != "2" {
-		t.Fatalf("Missing volumes: expected 2, got %s", n_volumes)
+	nVolumes := strings.Trim(out, " \r\n'")
+	if nVolumes != "2" {
+		t.Fatalf("Missing volumes: expected 2, got %s", nVolumes)
 	}
 
 	logDone("start - missing containers in --volumes-from did not affect subsequent runs")

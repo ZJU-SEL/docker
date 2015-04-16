@@ -6,7 +6,7 @@ import (
 	"net"
 	"sync"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/networkdriver"
 )
 
@@ -128,7 +128,7 @@ func (allocated *allocatedMap) checkIP(ip net.IP) (net.IP, error) {
 }
 
 // return an available ip if one is currently available.  If not,
-// return the next available ip for the nextwork
+// return the next available ip for the network
 func (allocated *allocatedMap) getNextIP() (net.IP, error) {
 	pos := big.NewInt(0).Set(allocated.last)
 	allRange := big.NewInt(0).Sub(allocated.end, allocated.begin)
@@ -157,7 +157,7 @@ func ipToBigInt(ip net.IP) *big.Int {
 		return x.SetBytes(ip6)
 	}
 
-	log.Errorf("ipToBigInt: Wrong IP length! %s", ip)
+	logrus.Errorf("ipToBigInt: Wrong IP length! %s", ip)
 	return nil
 }
 

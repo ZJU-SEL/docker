@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -172,4 +173,102 @@ func TestRunContainerWithCgroupParentAbsPath(t *testing.T) {
 	}
 
 	logDone("run - cgroup parent with absolute cgroup path")
+}
+
+func TestRunDeviceDirectory(t *testing.T) {
+	testRequires(t, NativeExecDriver)
+	defer deleteAllContainers()
+	cmd := exec.Command(dockerBinary, "run", "--device", "/dev/snd:/dev/snd", "busybox", "sh", "-c", "ls /dev/snd/")
+
+	out, _, err := runCommandWithOutput(cmd)
+	if err != nil {
+		t.Fatal(err, out)
+	}
+
+	if actual := strings.Trim(out, "\r\n"); !strings.Contains(out, "timer") {
+		t.Fatalf("expected output /dev/snd/timer, received %s", actual)
+	}
+
+	cmd = exec.Command(dockerBinary, "run", "--device", "/dev/snd:/dev/othersnd", "busybox", "sh", "-c", "ls /dev/othersnd/")
+
+	out, _, err = runCommandWithOutput(cmd)
+	if err != nil {
+		t.Fatal(err, out)
+	}
+
+	if actual := strings.Trim(out, "\r\n"); !strings.Contains(out, "seq") {
+		t.Fatalf("expected output /dev/othersnd/seq, received %s", actual)
+	}
+
+	logDone("run - test --device directory mounts all internal devices")
+}
+
+// TestRunDetach checks attaching and detaching with the escape sequence.
+func TestRunAttachDetach(t *testing.T) {
+	defer deleteAllContainers()
+	name := "attach-detach"
+	cmd := exec.Command(dockerBinary, "run", "--name", name, "-it", "busybox", "cat")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cpty, tty, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cpty.Close()
+	cmd.Stdin = tty
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitRun(name); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := cpty.Write([]byte("hello\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out) != "hello" {
+		t.Fatalf("exepected 'hello', got %q", out)
+	}
+
+	// escape sequence
+	if _, err := cpty.Write([]byte{16}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if _, err := cpty.Write([]byte{17}); err != nil {
+		t.Fatal(err)
+	}
+
+	ch := make(chan struct{})
+	go func() {
+		cmd.Wait()
+		ch <- struct{}{}
+	}()
+
+	running, err := inspectField(name, "State.Running")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if running != "true" {
+		t.Fatal("exepected container to still be running")
+	}
+
+	go func() {
+		dockerCmd(t, "kill", name)
+	}()
+
+	select {
+	case <-ch:
+	case <-time.After(10 * time.Millisecond):
+		t.Fatal("timed out waiting for container to exit")
+	}
+
+	logDone("run - attach detach")
 }

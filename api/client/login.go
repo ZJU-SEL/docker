@@ -14,10 +14,13 @@ import (
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/pkg/term"
 	"github.com/docker/docker/registry"
-	"github.com/docker/docker/utils"
 )
 
-// 'docker login': login / register a user to registry service.
+// CmdLogin logs in or registers a user to a Docker registry service.
+//
+// If no server is specified, the user will be logged into or registered to the registry's index server.
+//
+// Usage: docker login SERVER
 func (cli *DockerCli) CmdLogin(args ...string) error {
 	cmd := cli.Subcmd("login", "[SERVER]", "Register or log in to a Docker registry server, if no server is\nspecified \""+registry.IndexServerAddress()+"\" is the default.", true)
 	cmd.Require(flag.Max, 1)
@@ -28,7 +31,7 @@ func (cli *DockerCli) CmdLogin(args ...string) error {
 	cmd.StringVar(&password, []string{"p", "-password"}, "", "Password")
 	cmd.StringVar(&email, []string{"e", "-email"}, "", "Email")
 
-	utils.ParseFlags(cmd, args, true)
+	cmd.ParseFlags(args, true)
 
 	serverAddress := registry.IndexServerAddress()
 	if len(cmd.Args()) > 0 {
@@ -112,7 +115,7 @@ func (cli *DockerCli) CmdLogin(args ...string) error {
 	authconfig.ServerAddress = serverAddress
 	cli.configFile.Configs[serverAddress] = authconfig
 
-	stream, statusCode, err := cli.call("POST", "/auth", cli.configFile.Configs[serverAddress], false)
+	stream, statusCode, err := cli.call("POST", "/auth", cli.configFile.Configs[serverAddress], nil)
 	if statusCode == 401 {
 		delete(cli.configFile.Configs, serverAddress)
 		registry.SaveConfig(cli.configFile)

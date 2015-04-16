@@ -24,3 +24,89 @@ type AuthResponse struct {
 	// Status is the authentication status
 	Status string `json:"Status"`
 }
+
+// POST "/containers/"+containerID+"/wait"
+type ContainerWaitResponse struct {
+	// StatusCode is the status code of the wait job
+	StatusCode int `json:"StatusCode"`
+}
+
+// POST "/commit?container="+containerID
+type ContainerCommitResponse struct {
+	ID string `json:"Id"`
+}
+
+// GET "/containers/{name:.*}/changes"
+type ContainerChange struct {
+	Kind int
+	Path string
+}
+
+// GET "/images/{name:.*}/history"
+type ImageHistory struct {
+	ID        string `json:"Id"`
+	Created   int64
+	CreatedBy string
+	Tags      []string
+	Size      int64
+	Comment   string
+}
+
+// DELETE "/images/{name:.*}"
+type ImageDelete struct {
+	Untagged string `json:",omitempty"`
+	Deleted  string `json:",omitempty"`
+}
+
+// GET "/images/json"
+type Image struct {
+	ID          string `json:"Id"`
+	ParentId    string
+	RepoTags    []string
+	RepoDigests []string
+	Created     int
+	Size        int
+	VirtualSize int
+	Labels      map[string]string
+}
+
+type LegacyImage struct {
+	ID          string `json:"Id"`
+	Repository  string
+	Tag         string
+	Created     int
+	Size        int
+	VirtualSize int
+}
+
+// GET  "/containers/json"
+type Port struct {
+	IP          string
+	PrivatePort int
+	PublicPort  int
+	Type        string
+}
+
+type Container struct {
+	ID         string            `json:"Id"`
+	Names      []string          `json:",omitempty"`
+	Image      string            `json:",omitempty"`
+	Command    string            `json:",omitempty"`
+	Created    int               `json:",omitempty"`
+	Ports      []Port            `json:",omitempty"`
+	SizeRw     int               `json:",omitempty"`
+	SizeRootFs int               `json:",omitempty"`
+	Labels     map[string]string `json:",omitempty"`
+	Status     string            `json:",omitempty"`
+}
+
+// POST "/containers/"+containerID+"/copy"
+type CopyConfig struct {
+	Resource string
+}
+
+// GET "/containers/{name:.*}/top"
+type ContainerProcessList struct {
+	Processes [][]string
+	Titles    []string
+}

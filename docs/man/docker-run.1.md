@@ -13,6 +13,7 @@ docker-run - Run a command in a new container
 [**--cap-drop**[=*[]*]]
 [**--cidfile**[=*CIDFILE*]]
 [**--cpuset-cpus**[=*CPUSET-CPUS*]]
+[**--cpuset-mems**[=*CPUSET-MEMS*]]
 [**-d**|**--detach**[=*false*]]
 [**--device**[=*[]*]]
 [**--dns-search**[=*[]*]]
@@ -101,7 +102,7 @@ the number of containers running on the system.
 For example, consider three containers, one has a cpu-share of 1024 and
 two others have a cpu-share setting of 512. When processes in all three
 containers attempt to use 100% of CPU, the first container would receive
-50% of the total CPU time. If you add a fouth container with a cpu-share
+50% of the total CPU time. If you add a fourth container with a cpu-share
 of 1024, the first container only gets 33% of the CPU. The remaining containers
 receive 16.5%, 16.5% and 33% of the CPU.
 
@@ -133,6 +134,13 @@ division of CPU shares:
 
 **--cpuset-cpus**=""
    CPUs in which to allow execution (0-3, 0,1)
+
+**--cpuset-mems**=""
+   Memory nodes (MEMs) in which to allow execution (0-3, 0,1). Only effective on NUMA systems.
+
+   If you have four memory nodes on your system (0-3), use `--cpuset-mems=0,1`
+then processes in your Docker container will only use memory from the first
+two memory nodes.
 
 **-d**, **--detach**=*true*|*false*
    Detached mode: run the container in the background and print the new container ID. The default is *false*.
@@ -239,7 +247,7 @@ system's page size (the value would be very large, that's millions of trillions)
    Total memory limit (memory + swap)
 
    Set `-1` to disable swap (format: <number><optional unit>, where unit = b, k, m or g).
-This value should always larger than **-m**, so you should alway use this with **-m**.
+This value should always larger than **-m**, so you should always use this with **-m**.
 
 **--mac-address**=""
    Container MAC address (e.g. 92:d0:c6:0a:29:33)
@@ -416,7 +424,7 @@ you’d like to connect instead, as in:
 
 ## Sharing IPC between containers
 
-Using shm_server.c available here: http://www.cs.cf.ac.uk/Dave/C/node27.html
+Using shm_server.c available here: https://www.cs.cf.ac.uk/Dave/C/node27.html
 
 Testing `--ipc=host` mode:
 
@@ -433,7 +441,7 @@ Host shows a shared memory segment with 7 pids attached, happens to be from http
 Now run a regular container, and it correctly does NOT see the shared memory segment from the host:
 
 ```
- $ sudo docker run -it shm ipcs -m
+ $ docker run -it shm ipcs -m
 
  ------ Shared Memory Segments --------	
  key        shmid      owner      perms      bytes      nattch     status      
@@ -442,7 +450,7 @@ Now run a regular container, and it correctly does NOT see the shared memory seg
 Run a container with the new `--ipc=host` option, and it now sees the shared memory segment from the host httpd:
 
  ```
- $ sudo docker run -it --ipc=host shm ipcs -m
+ $ docker run -it --ipc=host shm ipcs -m
 
  ------ Shared Memory Segments --------
  key        shmid      owner      perms      bytes      nattch     status      
@@ -452,7 +460,7 @@ Testing `--ipc=container:CONTAINERID` mode:
 
 Start a container with a program to create a shared memory segment:
 ```
- sudo docker run -it shm bash
+ $ docker run -it shm bash
  $ sudo shm/shm_server &
  $ sudo ipcs -m
 
@@ -462,7 +470,7 @@ Start a container with a program to create a shared memory segment:
 ```
 Create a 2nd container correctly shows no shared memory segment from 1st container:
 ```
- $ sudo docker run shm ipcs -m
+ $ docker run shm ipcs -m
 
  ------ Shared Memory Segments --------
  key        shmid      owner      perms      bytes      nattch     status      
@@ -471,7 +479,7 @@ Create a 2nd container correctly shows no shared memory segment from 1st contain
 Create a 3rd container using the new --ipc=container:CONTAINERID option, now it shows the shared memory segment from the first:
 
 ```
- $ sudo docker run -it --ipc=container:ed735b2264ac shm ipcs -m
+ $ docker run -it --ipc=container:ed735b2264ac shm ipcs -m
  $ sudo ipcs -m
 
  ------ Shared Memory Segments --------
