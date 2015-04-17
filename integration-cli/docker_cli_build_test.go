@@ -348,7 +348,7 @@ func TestBuildHandleEscapes(t *testing.T) {
 		`
   FROM scratch
   ENV FOO bar
-  VOLUME \${FOO}
+  VOLUME /\${FOO}
   `, true)
 
 	if err != nil {
@@ -364,7 +364,7 @@ func TestBuildHandleEscapes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := result["${FOO}"]; !ok {
+	if _, ok := result["/${FOO}"]; !ok {
 		t.Fatal("Could not find volume ${FOO} set from env foo in volumes table")
 	}
 
@@ -378,7 +378,7 @@ func TestBuildHandleEscapes(t *testing.T) {
 		`
   FROM scratch
   ENV FOO bar
-  VOLUME \\\\\\\${FOO}
+  VOLUME /\\\\\\\${FOO}
   `, true)
 
 	if err != nil {
@@ -394,8 +394,8 @@ func TestBuildHandleEscapes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := result[`\\\${FOO}`]; !ok {
-		t.Fatal(`Could not find volume \\\${FOO} set from env foo in volumes table`, result)
+	if _, ok := result[`/\\\\\\${FOO}`]; !ok {
+		t.Fatal(`Could not find volume \\\\\\${FOO} set from env foo in volumes table`, result)
 	}
 
 	logDone("build - handle escapes")
