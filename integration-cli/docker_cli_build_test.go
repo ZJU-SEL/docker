@@ -365,7 +365,7 @@ func TestBuildHandleEscapes(t *testing.T) {
 	}
 
 	if _, ok := result["/${FOO}"]; !ok {
-		t.Fatal("Could not find volume ${FOO} set from env foo in volumes table")
+		t.Fatal("Could not find volume /${FOO} set from env foo in volumes table")
 	}
 
 	deleteImages(name)
@@ -394,8 +394,8 @@ func TestBuildHandleEscapes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := result[`/\\\\\\${FOO}`]; !ok {
-		t.Fatal(`Could not find volume \\\\\\${FOO} set from env foo in volumes table`, result)
+	if _, ok := result[`/\\\${FOO}`]; !ok {
+		t.Fatal(`Could not find volume /\\\${FOO} set from env foo in volumes table`, result)
 	}
 
 	logDone("build - handle escapes")
