@@ -47,11 +47,12 @@ func TestParseBindMount(t *testing.T) {
 		{"/tmp:/tmp", "", "/tmp", "/tmp", "", "", "", true, false},
 		{"/tmp:/tmp:ro", "", "/tmp", "/tmp", "", "", "", false, false},
 		{"/tmp:/tmp:rw", "", "/tmp", "/tmp", "", "", "", true, false},
-		{"/tmp:/tmp:foo", "", "/tmp", "/tmp", "", "", "", false, true},
+		{"/tmp:/tmp:foo", "", "/tmp", "/tmp", "", "", "", true, true},
 		{"name:/tmp", "", "/tmp", "", "name", "local", "", true, false},
 		{"name:/tmp", "external", "/tmp", "", "name", "external", "", true, false},
 		{"name:/tmp:ro", "local", "/tmp", "", "name", "local", "", false, false},
 		{"local/name:/tmp:rw", "", "/tmp", "", "local/name", "local", "", true, false},
+		{"/tmp:tmp", "", "", "", "", "", "", true, true},
 	}
 
 	for _, c := range cases {
@@ -82,6 +83,37 @@ func TestParseBindMount(t *testing.T) {
 
 		if m.RW != c.expRW {
 			t.Fatalf("Expected RW %v, was %v for spec %s\n", c.expRW, m.RW, c.bind)
+		}
+	}
+}
+
+func TestParseVolumes(t *testing.T) {
+	cases := []struct {
+		spec    string
+		expName string
+		expDest string
+		fail    bool
+	}{
+		{"", "", "", true},
+		{"name:tmp", "", "", true},
+		{"tmp", "", "", true},
+		{"name:/tmp", "name", "/tmp", false},
+	}
+
+	for _, c := range cases {
+		name, dest, err := parseVolumes(c.spec)
+		if c.fail {
+			if err == nil {
+				t.Fatalf("Expected error, was nil, for spec %s\n", c.spec)
+			}
+			continue
+		}
+
+		if name != c.expName {
+			t.Fatalf("Expected name %s, was %s, for spec %s\n", c.expName, name, c.spec)
+		}
+		if dest != c.expDest {
+			t.Fatalf("Expected dest %s, was %s for spec %s\n", c.expDest, dest, c.spec)
 		}
 	}
 }

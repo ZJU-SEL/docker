@@ -549,6 +549,22 @@ func volume(b *builder, args []string, attributes map[string]bool, original stri
 		if v == "" {
 			return fmt.Errorf("Volume specified can not be an empty string")
 		}
+
+		var (
+			destination string
+			parts       = strings.Split(v, ":")
+		)
+
+		if len(parts) == 2 {
+			destination = filepath.Clean(parts[1])
+		} else {
+			destination = filepath.Clean(parts[0])
+		}
+
+		if !filepath.IsAbs(destination) {
+			return fmt.Errorf("Invalid volumes path: %s mount path must be absolute.", destination)
+		}
+
 		b.Config.Volumes[v] = struct{}{}
 	}
 	if err := b.commit("", b.Config.Cmd, fmt.Sprintf("VOLUME %v", args)); err != nil {

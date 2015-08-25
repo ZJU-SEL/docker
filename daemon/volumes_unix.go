@@ -12,6 +12,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/execdriver"
+	"github.com/docker/docker/pkg/stringid"
 	"github.com/docker/docker/pkg/system"
 	"github.com/docker/docker/runconfig"
 	"github.com/docker/docker/volume"
@@ -79,6 +80,11 @@ func parseBindMount(spec string, mountLabel string, config *runconfig.Config) (*
 		bind.Mode = mode
 	default:
 		return nil, fmt.Errorf("Invalid volume specification: %s", spec)
+	}
+
+	//validate the volumes destination path
+	if !filepath.IsAbs(bind.Destination) {
+		return nil, fmt.Errorf("Invalid volume destination path: %s mount path must be absolute.", bind.Destination)
 	}
 
 	name, source, err := parseVolumeSource(arr[0])
@@ -414,4 +420,29 @@ func parseVolumeSource(spec string) (string, string, error) {
 // Only bind mounts and local volumes can be used in old versions of Docker.
 func (m *mountPoint) BackwardsCompatible() bool {
 	return len(m.Source) > 0 || m.Driver == volume.DefaultDriverName
+}
+
+// parseVolumes ensure that the supplied volumes is valid.
+func parseVolumes(spec string) (string, string, error) {
+	if len(spec) == 0 {
+		return "", "", fmt.Errorf("malformed volumes specification: %s", spec)
+	}
+
+	var (
+		name, destination string
+		parts             = strings.Split(spec, ":")
+	)
+	switch len(parts) {
+	case 2:
+		name, destination = parts[0], filepath.Clean(parts[1])
+	default:
+		name = stringid.GenerateNonCryptoID()
+		destination = filepath.Clean(parts[0])
+	}
+
+	if !filepath.IsAbs(destination) {
+		return "", "", fmt.Errorf("Invalid volumes path: %s mount path must be absolute.", destination)
+	}
+
+	return name, destination, nil
 }
