@@ -435,7 +435,10 @@ content label. Shared volume labels allow all containers to read/write content.
 The `Z` option tells Docker to label the content with a private unshared label.
 Only the current container can use a private volume.
 
-Note: Multiple Volume options can be added separated by a ","
+Note:
+Multiple Volume options can be added separated by a ",".
+The host path(`/host`) can be relative and absolute, but the destination path
+(`/container`) must be absolute.
 
 **--volumes-from**=[]
    Mount volumes from the specified container(s)

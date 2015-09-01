@@ -151,6 +151,10 @@ will automatically create this directory on the host for you. In the
 example above, Docker will create the `/doesnt/exist`
 folder before starting your container.
 
+> **Note:**
+> The host path(`/doesnt/exist`) can be relative and absolute, but the 
+> destination path(`/foo`) must be absolute.
+
     $ docker run --read-only -v /icanwrite busybox touch /icanwrite here
 
 Volumes can be used in combination with `--read-only` to control where

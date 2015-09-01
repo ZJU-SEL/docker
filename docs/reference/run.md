@@ -1242,6 +1242,10 @@ one or more `VOLUME`'s associated with an image, but only the operator
 can give access from one container to another (or from a container to a
 volume mounted on the host).
 
+> **Note:** 
+> The host path(`host-dir`) can be relative and absolute, 
+> but the destination path(`container-dir`) must be absolute.
+
 ### USER
 
 `root` (id = 0) is the default user within a container. The image developer can
