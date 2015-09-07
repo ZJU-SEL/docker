@@ -117,7 +117,7 @@ This will mount the host directory, `/src/webapp`, into the container at
 > way the source directory name is parsed. You can fix it by using a double slash at
 > the beginning of the source directory name as explained in [issue #12751](https://github.com/docker/docker/issues/12751)
 > 
-> The host path(`/src/webapp`) can be relative and absolute, but the destination path(`/opt/webapp`)
+> The host path(`/src/webapp`) can be relative or absolute, but the destination path(`/opt/webapp`)
 > must be absolute.
 
 This is very useful for testing, for example we can

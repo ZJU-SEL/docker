@@ -1243,7 +1243,7 @@ can give access from one container to another (or from a container to a
 volume mounted on the host).
 
 > **Note:** 
-> The host path(`host-dir`) can be relative and absolute, 
+> The host path(`host-dir`) can be relative or absolute, 
 > but the destination path(`container-dir`) must be absolute.
 
 ### USER

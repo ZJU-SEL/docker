@@ -437,7 +437,7 @@ Only the current container can use a private volume.
 
 Note:
 Multiple Volume options can be added separated by a ",".
-The host path(`/host`) can be relative and absolute, but the destination path
+The host path(`/host`) can be relative or absolute, but the destination path
 (`/container`) must be absolute.
 
 **--volumes-from**=[]
